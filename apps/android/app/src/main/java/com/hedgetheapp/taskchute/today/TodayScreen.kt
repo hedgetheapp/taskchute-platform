@@ -108,7 +108,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.text.font.FontWeight
@@ -2787,12 +2790,38 @@ private fun RunningTaskPanel(
                     fontWeight = FontWeight.Medium,
                 )
                 if (controller.showQuickInterruptAction(task)) {
+                    val quickPhase = controller.quickInterruptActionPhase(task)
+                    val quickPending = quickPhase == QuickInterruptActionPhase.WAITING_FOR_START
+                        || quickPhase == QuickInterruptActionPhase.SENDING
+                        || quickPhase == QuickInterruptActionPhase.RECONCILING
+                    val quickStateDescription = when (quickPhase) {
+                        QuickInterruptActionPhase.WAITING_FOR_START -> "開始状態を確認後に割込を送信します"
+                        QuickInterruptActionPhase.SENDING -> "割込を送信中です"
+                        QuickInterruptActionPhase.RECONCILING -> "割込結果を確認中です"
+                        QuickInterruptActionPhase.RETRY_REQUIRED, null -> "割込"
+                    }
                     TextButton(
                         onClick = { controller.quickInterrupt(task) },
-                        enabled = enabled && quickInterruptEnabled && controller.canQuickInterrupt(task),
-                        modifier = Modifier.height(48.dp).testTag("quick-interrupt-button"),
+                        enabled = quickInterruptEnabled && controller.canQuickInterrupt(task),
+                        modifier = Modifier.height(48.dp).testTag("quick-interrupt-button").then(
+                            if (quickPending) Modifier.semantics {
+                                stateDescription = quickStateDescription
+                                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+                            } else Modifier,
+                        ),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    ) { Text("割込", fontSize = 13.sp) }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("割込", fontSize = 13.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
+                                if (quickPending) CircularProgressIndicator(
+                                    modifier = Modifier.size(11.dp),
+                                    strokeWidth = 1.5.dp,
+                                )
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.width(4.dp))
                 Box(

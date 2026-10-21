@@ -193,6 +193,102 @@ class TodayControllerTest {
     }
 
     @Test
+    fun quickInterruptTappedDuringOptimisticStartWaitsForCanonicalExecutionAndRevision() {
+        val planned = dayWith(LifecycleState.PLANNED).copy(taskChuteDayId = "day-1")
+        val running = dayWith(LifecycleState.RUNNING).copy(
+            taskChuteDayId = "day-1",
+            placementRevision = 6,
+            sections = dayWith(LifecycleState.RUNNING).sections.map { section ->
+                section.copy(entries = section.entries.map { it.copy(executionId = "server-execution") })
+            },
+            activeExecution = TodayExecution("server-execution", "entry-1", "2026-09-14T01:00:00Z", 600),
+        )
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(planned)
+            loadResultAfterFirst = TodayResult.Success(running)
+            holdStart = true
+            holdSecondLoad = true
+            quickInterruptResults = listOf(TodayQuickInterruptResult.Confirmed(7))
+            onQuickInterruptCall = { request, _ ->
+                loadResultAfterFirst = TodayResult.Success(quickInterruptedDay(running, request))
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.logicalDate == planned.logicalDate })
+
+        val task = planned.allEntries.single()
+        controller.start(task)
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(controller.showQuickInterruptAction(task))
+        assertTrue(controller.canQuickInterrupt(task))
+        controller.quickInterrupt(task)
+        controller.quickInterrupt(task)
+        assertEquals(QuickInterruptActionPhase.WAITING_FOR_START, controller.state.quickInterruptActionPhase)
+        assertEquals(0, repository.quickInterruptCalls.get())
+
+        repository.releaseStart.countDown()
+        assertTrue(repository.secondLoadStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(0, repository.quickInterruptCalls.get())
+        assertEquals(QuickInterruptActionPhase.WAITING_FOR_START, controller.state.quickInterruptActionPhase)
+
+        repository.releaseSecondLoad.countDown()
+        assertTrue(repository.quickInterruptStarted.await(2, TimeUnit.SECONDS))
+        val request = repository.quickInterruptRequests.single()
+        assertEquals("server-execution", request.activeExecutionId)
+        assertEquals(6, request.expectedPlacementRevision)
+        assertEquals(1, repository.quickInterruptCalls.get())
+        assertTrue(awaitState(controller) {
+            it.pendingEntryIds.isEmpty() && it.day?.activeExecution?.id == request.targetExecutionId
+        })
+        controller.close()
+    }
+
+    @Test
+    fun earlyQuickInterruptIsCancelledWhenStartFailsOrDayChanges() {
+        val planned = dayWith(LifecycleState.PLANNED).copy(taskChuteDayId = "day-1")
+        val failedRepository = FakeRepository().apply {
+            loadResult = TodayResult.Success(planned)
+            holdStart = true
+            startResult = TodayMutationResult.Failure("start rejected")
+        }
+        val failedController = controller(failedRepository)
+        failedController.loadCurrent()
+        assertTrue(failedRepository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(failedController) { it.day != null })
+        val task = planned.allEntries.single()
+        failedController.start(task)
+        failedController.quickInterrupt(task)
+        assertTrue(failedRepository.startStarted.await(2, TimeUnit.SECONDS))
+        failedRepository.releaseStart.countDown()
+        assertTrue(awaitState(failedController) {
+            it.quickInterruptActionPhase == null && it.pendingEntryIds.isEmpty()
+                && it.interruptFeedback?.contains("送信していません") == true
+        })
+        assertEquals(0, failedRepository.quickInterruptCalls.get())
+        failedController.close()
+
+        val navigationRepository = FakeRepository().apply {
+            loadResult = TodayResult.Success(planned)
+            setDateResults("2026-09-15", TodayResult.Success(dayAt("2026-09-15", "Other day")))
+            holdStart = true
+        }
+        val navigationController = controller(navigationRepository)
+        navigationController.loadCurrent()
+        assertTrue(navigationRepository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(navigationController) { it.day != null })
+        navigationController.start(task)
+        navigationController.quickInterrupt(task)
+        navigationController.loadLogicalDate("2026-09-15")
+        assertTrue(awaitState(navigationController) { it.day?.logicalDate == "2026-09-15" })
+        navigationRepository.releaseStart.countDown()
+        assertTrue(awaitState(navigationController) { it.pendingEntryIds.isEmpty() })
+        assertEquals(0, navigationRepository.quickInterruptCalls.get())
+        navigationController.close()
+    }
+
+    @Test
     fun successfulMutationKeepsOptimisticPresentationUntilSilentReconcile() {
         val task = task(LifecycleState.PLANNED)
         val repository = FakeRepository().apply {

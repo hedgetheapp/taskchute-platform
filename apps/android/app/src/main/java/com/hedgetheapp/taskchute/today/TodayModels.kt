@@ -227,6 +227,13 @@ enum class TodayLoadStatus {
     AUTH_REQUIRED,
 }
 
+enum class QuickInterruptActionPhase {
+    WAITING_FOR_START,
+    SENDING,
+    RECONCILING,
+    RETRY_REQUIRED,
+}
+
 data class TodayUiState(
     val status: TodayLoadStatus = TodayLoadStatus.LOADING,
     val day: TodayDay? = null,
@@ -238,6 +245,8 @@ data class TodayUiState(
     val selectedLogicalDate: String? = null,
     val interruptFeedback: String? = null,
     val canRetryInterrupt: Boolean = false,
+    val quickInterruptActionEntryId: String? = null,
+    val quickInterruptActionPhase: QuickInterruptActionPhase? = null,
 )
 
 val TodayUiState.presentedDay: TodayDay?

@@ -48,10 +48,29 @@ class TodayController(
         val logicalDate: String,
         val request: TodayQuickInterruptRequest,
     )
+    private data class PendingStartForQuickInterrupt(
+        val logicalDate: String,
+        val sourceEntryId: String,
+        val sessionGeneration: Long,
+        val startConfirmed: Boolean = false,
+        val canonicalLoadGenerationAfterStart: Long? = null,
+    )
+    private data class QueuedQuickInterruptAfterStart(
+        val logicalDate: String,
+        val sourceEntryId: String,
+        val sessionGeneration: Long,
+        val operationId: String,
+        val quickTaskId: String,
+        val targetEntryId: String,
+        val targetExecutionId: String,
+        val continuationEntryId: String,
+    )
     private var pendingComplete: PendingComplete? = null
     private var queuedStartIntent: QueuedStartIntent? = null
     private var pendingInterrupt: PendingInterrupt? = null
     private var interruptInFlight = false
+    private var pendingStartForQuickInterrupt: PendingStartForQuickInterrupt? = null
+    private var queuedQuickInterruptAfterStart: QueuedQuickInterruptAfterStart? = null
     private var pendingQuickInterrupt: PendingQuickInterrupt? = null
     private var quickInterruptInFlight = false
     private val confirmedPlacementRevisionFloors = mutableMapOf<String, Int>()
@@ -89,7 +108,7 @@ class TodayController(
 
     /** Reconcile server state without blanking Today or showing the pull-to-refresh state. */
     fun reconcileSilently() {
-        if (pendingEntryIds.isNotEmpty()) {
+        if (pendingEntryIds.isNotEmpty() && !canReconcileQueuedQuickStart()) {
             deferredRealtimeReload = true
             return
         }
@@ -177,6 +196,8 @@ class TodayController(
         queuedStartIntent = null
         pendingInterrupt = null
         interruptInFlight = false
+        pendingStartForQuickInterrupt = null
+        queuedQuickInterruptAfterStart = null
         pendingQuickInterrupt = null
         quickInterruptInFlight = false
         confirmedPlacementRevisionFloors.clear()
@@ -198,7 +219,7 @@ class TodayController(
     fun start(task: TodayTask) {
         val canonicalDay = state.day ?: return
         val presentedDay = state.presentedDay?.takeIf { it.logicalDate == canonicalDay.logicalDate } ?: return
-        if (!canonicalDay.isCurrent || queuedStartIntent != null || pendingInterrupt != null || pendingQuickInterrupt != null ||
+        if (!canonicalDay.isCurrent || queuedStartIntent != null || pendingInterrupt != null || pendingStartForQuickInterrupt != null || pendingQuickInterrupt != null ||
             task.lifecycleState != LifecycleState.PLANNED
         ) return
         val predecessor = pendingComplete
@@ -216,6 +237,13 @@ class TodayController(
             return
         }
         if (hasRunningProjection || !pendingEntryIds.add(task.id)) return
+        if (predecessor == null) {
+            pendingStartForQuickInterrupt = PendingStartForQuickInterrupt(
+                logicalDate = canonicalDay.logicalDate,
+                sourceEntryId = task.id,
+                sessionGeneration = sessionGeneration,
+            )
+        }
         beginOptimisticMutation()
         applyOptimisticDay(applyOptimisticLifecycle(presentedDay, task.id, LifecycleState.RUNNING))
         val queued = predecessor?.let {
@@ -246,12 +274,50 @@ class TodayController(
     }
 
     fun showQuickInterruptAction(task: TodayTask): Boolean =
-        resolveQuickInterruptSource(task, requireSafeState = false) != null
+        isPendingStartQuickInterruptSource(task) || resolveQuickInterruptSource(task, requireSafeState = false) != null
 
-    fun canQuickInterrupt(task: TodayTask): Boolean =
-        resolveQuickInterruptSource(task, requireSafeState = true) != null
+    fun canQuickInterrupt(task: TodayTask): Boolean {
+        if (isPendingStartQuickInterruptSource(task)) {
+            val start = pendingStartForQuickInterrupt ?: return false
+            val allowedPendingIds = buildSet {
+                add(task.id)
+                pendingComplete?.entryId?.let(::add)
+            }
+            return state.status == TodayLoadStatus.CONTENT
+                && queuedQuickInterruptAfterStart == null
+                && state.quickInterruptActionEntryId != task.id
+                && pendingQuickInterrupt == null
+                && pendingInterrupt == null
+                && pendingEntryIds.all { it in allowedPendingIds }
+                && (pendingComplete == null || queuedStartIntent?.task?.id == start.sourceEntryId)
+        }
+        return resolveQuickInterruptSource(task, requireSafeState = true) != null
+    }
 
     fun quickInterrupt(task: TodayTask) {
+        if (isPendingStartQuickInterruptSource(task)) {
+            if (!canQuickInterrupt(task) || queuedQuickInterruptAfterStart != null) return
+            queuedQuickInterruptAfterStart = QueuedQuickInterruptAfterStart(
+                logicalDate = pendingStartForQuickInterrupt?.logicalDate ?: return,
+                sourceEntryId = task.id,
+                sessionGeneration = sessionGeneration,
+                operationId = UUIDv7.next(),
+                quickTaskId = UUIDv7.next(),
+                targetEntryId = UUIDv7.next(),
+                targetExecutionId = UUIDv7.next(),
+                continuationEntryId = UUIDv7.next(),
+            )
+            pendingEntryIds += task.id
+            state = state.copy(
+                pendingEntryIds = pendingEntryIds.toSet(),
+                errorMessage = null,
+                interruptFeedback = null,
+                canRetryInterrupt = false,
+                quickInterruptActionEntryId = task.id,
+                quickInterruptActionPhase = QuickInterruptActionPhase.WAITING_FOR_START,
+            )
+            return
+        }
         val canonicalDay = state.day ?: return
         val source = resolveQuickInterruptSource(task, requireSafeState = true) ?: return
         val taskChuteDayId = canonicalDay.taskChuteDayId?.takeIf { it.isNotBlank() } ?: return
@@ -277,8 +343,10 @@ class TodayController(
         state = state.copy(
             pendingEntryIds = pendingEntryIds.toSet(),
             errorMessage = null,
-            interruptFeedback = "割り込みを処理しています…",
+            interruptFeedback = null,
             canRetryInterrupt = false,
+            quickInterruptActionEntryId = source.id,
+            quickInterruptActionPhase = QuickInterruptActionPhase.SENDING,
         )
         dispatchQuickInterrupt(intent)
     }
@@ -307,13 +375,152 @@ class TodayController(
         return source
     }
 
+    fun quickInterruptActionPhase(task: TodayTask): QuickInterruptActionPhase? =
+        state.quickInterruptActionPhase.takeIf { state.quickInterruptActionEntryId == task.id }
+
+    private fun isPendingStartQuickInterruptSource(task: TodayTask): Boolean {
+        val start = pendingStartForQuickInterrupt ?: return false
+        val canonicalDay = state.day ?: return false
+        val presentedDay = state.presentedDay?.takeIf { it.logicalDate == canonicalDay.logicalDate } ?: return false
+        if (start.sessionGeneration != sessionGeneration || start.logicalDate != canonicalDay.logicalDate
+            || task.id != start.sourceEntryId || !canonicalDay.isCurrent || !canonicalDay.planningEnabled
+            || canonicalDay.taskChuteDayId.isNullOrBlank()
+            || (state.selectedLogicalDate != null && state.selectedLogicalDate != start.logicalDate)
+            || (lastRequestedLogicalDate != null && lastRequestedLogicalDate != start.logicalDate)
+        ) return false
+        val canonicalTarget = canonicalDay.allEntries.singleOrNull { it.id == start.sourceEntryId } ?: return false
+        val presentedTarget = presentedDay.allEntries.singleOrNull { it.id == start.sourceEntryId } ?: return false
+        if (canonicalTarget.lifecycleState != LifecycleState.PLANNED || canonicalTarget.routineDerived
+            || presentedTarget.lifecycleState != LifecycleState.RUNNING
+            || presentedDay.runningTask?.id != start.sourceEntryId
+            || presentedDay.activeExecution?.entryId != start.sourceEntryId
+        ) return false
+
+        if (canonicalDay.activeExecution == null && canonicalDay.activeEntry == null) {
+            return canonicalDay.allEntries.none { it.lifecycleState == LifecycleState.RUNNING }
+        }
+        val predecessor = pendingComplete ?: return false
+        val queuedStart = queuedStartIntent ?: return false
+        return predecessor.logicalDate == start.logicalDate
+            && predecessor.entryId == canonicalDay.activeExecution?.entryId
+            && canonicalDay.activeEntry == null
+            && canonicalDay.allEntries.count { it.lifecycleState == LifecycleState.RUNNING } == 1
+            && queuedStart.logicalDate == start.logicalDate
+            && queuedStart.predecessorEntryId == predecessor.entryId
+            && queuedStart.task.id == start.sourceEntryId
+    }
+
+    private fun canReconcileQueuedQuickStart(): Boolean {
+        val start = pendingStartForQuickInterrupt ?: return false
+        val queued = queuedQuickInterruptAfterStart
+        return start.startConfirmed && start.sessionGeneration == sessionGeneration
+            && (queued == null || (queued.sessionGeneration == sessionGeneration
+                && queued.sourceEntryId == start.sourceEntryId))
+            && pendingEntryIds == setOf(start.sourceEntryId)
+    }
+
+    private fun reconcilePendingStartForQuickInterrupt(day: TodayDay) {
+        val start = pendingStartForQuickInterrupt ?: return
+        if (!start.startConfirmed || start.sessionGeneration != sessionGeneration) return
+        val queued = queuedQuickInterruptAfterStart
+        if (day.logicalDate != start.logicalDate || !day.isCurrent || !isSameDayRequest(lastRequestedLogicalDate, start.logicalDate)
+            || (state.selectedLogicalDate != null && state.selectedLogicalDate != start.logicalDate)
+        ) {
+            cancelPendingStartForQuickInterrupt(
+                "選択中のDayが変わったため割込は送信していません。Todayで状態を確認してから、必要なら再度お試しください。",
+            )
+            return
+        }
+        val execution = day.activeExecution
+        val source = day.allEntries.singleOrNull { it.id == start.sourceEntryId }
+        val confirmed = day.planningEnabled && !day.taskChuteDayId.isNullOrBlank()
+            && day.activeEntry == null && source?.lifecycleState == LifecycleState.RUNNING
+            && !source.routineDerived && execution != null
+            && execution.entryId == start.sourceEntryId && source.executionId == execution.id
+            && day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING } == 1
+        if (!confirmed) {
+            if (deferredRealtimeReload) return
+            cancelPendingStartForQuickInterrupt(
+                "開始状態を確認できなかったため割込は送信していません。Todayを再読み込みしてから再度お試しください。",
+            )
+            return
+        }
+        val confirmedSource = requireNotNull(source)
+        if (queued == null) {
+            pendingStartForQuickInterrupt = null
+            pendingEntryIds.remove(start.sourceEntryId)
+            state = state.copy(pendingEntryIds = pendingEntryIds.toSet())
+            return
+        }
+        if (queued.logicalDate != day.logicalDate || queued.sourceEntryId != confirmedSource.id
+            || queued.sessionGeneration != sessionGeneration || state.status != TodayLoadStatus.CONTENT
+            || state.optimisticDay != null || optimisticActive
+            || pendingEntryIds.any { it != start.sourceEntryId }
+            || pendingComplete != null || queuedStartIntent != null || pendingInterrupt != null
+            || pendingQuickInterrupt != null
+        ) {
+            cancelPendingStartForQuickInterrupt(
+                "割込の前提が変わったため送信していません。最新のTodayを確認してから再度お試しください。",
+            )
+            return
+        }
+        val request = TodayQuickInterruptRequest(
+            operationId = queued.operationId,
+            taskChuteDayId = requireNotNull(day.taskChuteDayId),
+            sourceEntryId = confirmedSource.id,
+            activeExecutionId = requireNotNull(execution).id,
+            quickTaskId = queued.quickTaskId,
+            targetEntryId = queued.targetEntryId,
+            targetExecutionId = queued.targetExecutionId,
+            continuationEntryId = queued.continuationEntryId,
+            expectedPlacementRevision = effectivePlacementRevision(day),
+        )
+        queuedQuickInterruptAfterStart = null
+        pendingQuickInterrupt = PendingQuickInterrupt(start.logicalDate, request)
+        deferredRealtimeReload = false
+        dispatchQuickInterrupt(requireNotNull(pendingQuickInterrupt))
+    }
+
+    private fun cancelPendingStartForQuickInterrupt(message: String? = null): Boolean {
+        val start = pendingStartForQuickInterrupt
+        val queued = queuedQuickInterruptAfterStart
+        if (start == null && queued == null) return false
+        pendingStartForQuickInterrupt = null
+        queuedQuickInterruptAfterStart = null
+        start?.sourceEntryId?.let(pendingEntryIds::remove)
+        if (queued != null) {
+            state = state.copy(
+                pendingEntryIds = pendingEntryIds.toSet(),
+                interruptFeedback = message ?: "割込は送信していません。Todayを再読み込みして状態を確認してください。",
+                canRetryInterrupt = false,
+                quickInterruptActionEntryId = null,
+                quickInterruptActionPhase = null,
+            )
+        } else if (start != null) {
+            state = state.copy(
+                pendingEntryIds = pendingEntryIds.toSet(),
+                quickInterruptActionEntryId = state.quickInterruptActionEntryId
+                    .takeUnless { it == start.sourceEntryId },
+                quickInterruptActionPhase = state.quickInterruptActionPhase
+                    .takeUnless { state.quickInterruptActionEntryId == start.sourceEntryId },
+            )
+        }
+        return queued != null
+    }
+
+    private fun isSameDayRequest(requestedDate: String?, logicalDate: String): Boolean =
+        requestedDate == logicalDate || (requestedDate == null
+            && state.day?.logicalDate == logicalDate && state.day?.isCurrent == true)
+
     private fun dispatchQuickInterrupt(intent: PendingQuickInterrupt) {
         if (pendingQuickInterrupt != intent || quickInterruptInFlight) return
         quickInterruptInFlight = true
         state = state.copy(
             errorMessage = null,
-            interruptFeedback = "割り込みを処理しています…",
+            interruptFeedback = null,
             canRetryInterrupt = false,
+            quickInterruptActionEntryId = intent.request.sourceEntryId,
+            quickInterruptActionPhase = QuickInterruptActionPhase.SENDING,
         )
         val operationSessionGeneration = sessionGeneration
         scope.launch {
@@ -346,6 +553,10 @@ class TodayController(
         ambiguityMessage: String?,
         rejection: TodayQuickInterruptResult.Rejected?,
     ) {
+        state = state.copy(
+            quickInterruptActionEntryId = intent.request.sourceEntryId,
+            quickInterruptActionPhase = QuickInterruptActionPhase.RECONCILING,
+        )
         val operationSessionGeneration = sessionGeneration
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -408,7 +619,11 @@ class TodayController(
             return
         }
         val message = ambiguityMessage?.takeIf { it.isNotBlank() } ?: "割り込みの保存状態を確認できません。"
-        state = state.copy(interruptFeedback = "$message 同じ操作を再試行してください。", canRetryInterrupt = true)
+        state = state.copy(
+            interruptFeedback = "$message 同じ操作を再試行してください。",
+            canRetryInterrupt = true,
+            quickInterruptActionPhase = QuickInterruptActionPhase.RETRY_REQUIRED,
+        )
     }
 
     private fun quickInterruptRejectionMessage(rejection: TodayQuickInterruptResult.Rejected): String = when (rejection.code) {
@@ -423,7 +638,11 @@ class TodayController(
         quickInterruptInFlight = false
         pendingEntryIds.remove(intent.request.sourceEntryId)
         pendingEntryIds.remove(intent.request.targetEntryId)
-        state = state.copy(pendingEntryIds = pendingEntryIds.toSet())
+        state = state.copy(
+            pendingEntryIds = pendingEntryIds.toSet(),
+            quickInterruptActionEntryId = null,
+            quickInterruptActionPhase = null,
+        )
     }
 
     private fun isQuickInterruptProjection(day: TodayDay, request: TodayQuickInterruptRequest): Boolean {
@@ -661,6 +880,13 @@ class TodayController(
     }
 
     private fun load(logicalDate: String?, visible: Boolean = true) {
+        pendingStartForQuickInterrupt?.let { start ->
+            if (!isSameDayRequest(logicalDate, start.logicalDate)) {
+                cancelPendingStartForQuickInterrupt(
+                    "日付を切り替えたため割込は送信していません。Todayで状態を確認してから、必要なら再度お試しください。",
+                )
+            }
+        }
         val activeDate = queuedStartIntent?.logicalDate ?: pendingComplete?.logicalDate
         if (activeDate != null) {
             val requestMatchesHandoff = logicalDate == activeDate ||
@@ -796,11 +1022,20 @@ class TodayController(
             is TodayResult.Success -> {
                 authRecoveryAttempted = false
                 if (publishDay(result.day, request.optimisticGeneration)) {
+                    val pendingStart = pendingStartForQuickInterrupt
+                    if (pendingStart == null || request.generation >=
+                        (pendingStart.canonicalLoadGenerationAfterStart ?: Long.MAX_VALUE)
+                    ) {
+                        reconcilePendingStartForQuickInterrupt(result.day)
+                    }
                     onCanonicalDayLoaded(result.day)
                     flushDeferredRealtimeReload(visible = false)
                 }
             }
             TodayResult.Unauthorized -> {
+                cancelPendingStartForQuickInterrupt(
+                    "認証を確認できなかったため割込は送信していません。再認証後にTodayを更新してください。",
+                )
                 deferredRealtimeReload = false
                 canonicalDayCache.clear()
                 if (!authRecoveryAttempted) {
@@ -818,6 +1053,14 @@ class TodayController(
                 }
             }
             is TodayResult.Failure -> {
+                val pendingStart = pendingStartForQuickInterrupt
+                if (pendingStart == null || request.generation >=
+                    (pendingStart.canonicalLoadGenerationAfterStart ?: Long.MAX_VALUE)
+                ) {
+                    cancelPendingStartForQuickInterrupt(
+                        "開始後の状態を確認できなかったため割込は送信していません。Todayを再読み込みしてから再度お試しください。",
+                    )
+                }
                 val warmDay = state.presentedDay?.takeIf { it.logicalDate == request.logicalDate }
                 if (request.visible && warmDay != null) {
                     state = state.copy(
@@ -973,10 +1216,31 @@ class TodayController(
     }
 
     private fun finishStart(entryId: String, logicalDate: String, handoff: QueuedStartIntent?, result: TodayMutationResult) {
+        val quickStart = pendingStartForQuickInterrupt?.takeIf {
+            it.sourceEntryId == entryId && it.logicalDate == logicalDate && it.sessionGeneration == sessionGeneration
+        }
         if (result is TodayMutationResult.SuccessWithRevision && result.placementRevision != null) {
             confirmPlacementRevision(logicalDate, result.placementRevision)
         }
-        pendingEntryIds.remove(entryId)
+        when (result) {
+            TodayMutationResult.Success, is TodayMutationResult.SuccessWithRevision -> {
+                if (quickStart != null) {
+                    pendingStartForQuickInterrupt = quickStart.copy(
+                        startConfirmed = true,
+                        canonicalLoadGenerationAfterStart = selectedLoadGeneration + 1,
+                    )
+                    pendingEntryIds += entryId
+                } else {
+                    pendingEntryIds.remove(entryId)
+                }
+            }
+            else -> {
+                cancelPendingStartForQuickInterrupt(
+                    "開始できなかったため割込は送信していません。状態を確認してから再度お試しください。",
+                )
+                pendingEntryIds.remove(entryId)
+            }
+        }
         if (handoff != null && queuedStartIntent == handoff) queuedStartIntent = null
         publishPending()
         when (result) {
@@ -1035,7 +1299,9 @@ class TodayController(
     }
 
     private fun flushDeferredRealtimeReload(visible: Boolean = true) {
-        if (!deferredRealtimeReload || loadInFlight || pendingEntryIds.isNotEmpty()) return
+        if (!deferredRealtimeReload || loadInFlight ||
+            (pendingEntryIds.isNotEmpty() && !canReconcileQueuedQuickStart())
+        ) return
         deferredRealtimeReload = false
         load(state.selectedLogicalDate ?: state.day?.logicalDate, visible = visible)
     }
@@ -1074,7 +1340,7 @@ class TodayController(
             if (state.day?.logicalDate != logicalDate ||
                 confirmedPlacementRevisionFloors[logicalDate] != floor ||
                 loadInFlight ||
-                pendingEntryIds.isNotEmpty()
+                (pendingEntryIds.isNotEmpty() && !canReconcileQueuedQuickStart())
             ) return@launch
             load(logicalDate, visible = false)
         }

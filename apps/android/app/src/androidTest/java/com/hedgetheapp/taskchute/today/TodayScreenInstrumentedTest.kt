@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.today
 
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.unit.dp
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
@@ -486,6 +488,72 @@ class TodayScreenInstrumentedTest {
         assertEquals(LifecycleState.PLANNED, day.allEntries.single { it.id == request.continuationEntryId }.lifecycleState)
         assertEquals(null, day.allEntries.single { it.id == request.continuationEntryId }.plannedStartMinute)
         assertEquals(1, day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING })
+    }
+
+    @Test
+    fun quickInterruptIsVisibleAndAcknowledgedWhileStartAndCanonicalReadAreDelayed() {
+        val planned = dayWith().copy(taskChuteDayId = "day-1")
+        val running = planned.copy(
+            placementRevision = 6,
+            sections = planned.sections.map { section ->
+                section.copy(entries = section.entries.map { entry ->
+                    entry.copy(
+                        lifecycleState = LifecycleState.RUNNING,
+                        executionId = "server-execution",
+                        activeStartedAt = "2026-09-14T01:00:00Z",
+                    )
+                })
+            },
+            activeExecution = TodayExecution("server-execution", "entry-1", "2026-09-14T01:00:00Z", 600),
+        )
+        val repo = launchScreen(FakeTodayRepository(initialDay = planned).apply {
+            holdStart = true
+            onStartAccepted = { currentDay = running }
+            quickInterruptResult = TodayQuickInterruptResult.Confirmed(7)
+            onQuickInterruptAccepted = { request -> currentDay = quickInterruptedDay(running, request) }
+        })
+        waitForStatus(TodayLoadStatus.CONTENT)
+        repo.holdRefresh = true
+
+        val startTapNanos = SystemClock.elapsedRealtimeNanos()
+        composeRule.onNodeWithContentDescription("タスクを開始").performClick()
+        composeRule.waitUntil(10_000) {
+            repo.startCalls.get() == 1 &&
+                composeRule.onAllNodesWithTag("quick-interrupt-button").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("quick-interrupt-button").assertIsDisplayed().assertIsEnabled()
+        val actionVisibleMs = (SystemClock.elapsedRealtimeNanos() - startTapNanos) / 1_000_000
+
+        val quickTapNanos = SystemClock.elapsedRealtimeNanos()
+        composeRule.onNodeWithTag("quick-interrupt-button").performClick()
+        composeRule.waitUntil(5_000) {
+            controller?.state?.quickInterruptActionPhase == QuickInterruptActionPhase.WAITING_FOR_START
+        }
+        val tapAcknowledgedMs = (SystemClock.elapsedRealtimeNanos() - quickTapNanos) / 1_000_000
+        composeRule.onNodeWithTag("quick-interrupt-button").assertIsDisplayed()
+        assertEquals(
+            ProgressBarRangeInfo.Indeterminate,
+            composeRule.onNodeWithTag("quick-interrupt-button")
+                .fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo],
+        )
+        assertTrue(composeRule.onAllNodesWithText("割り込みを処理しています…").fetchSemanticsNodes().isEmpty())
+        assertEquals(0, repo.quickInterruptCalls.get())
+
+        repo.releaseStart.countDown()
+        assertTrue(repo.refreshStarted.await(5, TimeUnit.SECONDS))
+        assertEquals(0, repo.quickInterruptCalls.get())
+        assertEquals(QuickInterruptActionPhase.WAITING_FOR_START, controller?.state?.quickInterruptActionPhase)
+        repo.releaseRefresh.countDown()
+
+        composeRule.waitUntil(10_000) {
+            repo.quickInterruptCalls.get() == 1 &&
+                controller?.state?.day?.activeExecution?.id == repo.quickInterruptRequests.singleOrNull()?.targetExecutionId
+        }
+        val request = repo.quickInterruptRequests.single()
+        assertEquals("server-execution", request.activeExecutionId)
+        assertEquals(6, request.expectedPlacementRevision)
+        assertEquals(1, repo.quickInterruptCalls.get())
+        Log.i("D181Responsiveness", "start_to_action_visible_ms=$actionVisibleMs tap_to_queued_feedback_ms=$tapAcknowledgedMs; delayed Start/read gated Quick dispatch")
     }
 
     @Test
@@ -3437,6 +3505,7 @@ class TodayScreenInstrumentedTest {
         var onQuickInterruptAccepted: ((TodayQuickInterruptRequest) -> Unit)? = null
         val releaseLoad = CountDownLatch(1)
         val releaseRefresh = CountDownLatch(1)
+        val refreshStarted = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
         val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
@@ -3484,7 +3553,10 @@ class TodayScreenInstrumentedTest {
                 dateReadStarted.getValue(logicalDate).countDown()
                 dateReadReleased.getValue(logicalDate).await()
             }
-            if (holdRefresh) releaseRefresh.await()
+            if (holdRefresh) {
+                refreshStarted.countDown()
+                releaseRefresh.await()
+            }
             val result = when (mode) {
                 LoadMode.SUCCESS -> TodayResult.Success(
                     currentDay.copy(
