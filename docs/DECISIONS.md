@@ -1,3 +1,14 @@
+## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
+
+Status: **Approved / implementation pending** (Product Owner 2026-10-21; user selected Option A, then approved minimal invisible lineage persistence).
+
+Canonical Decision: `docs/decisions/D-182_INTERRUPTION_HARD_DELETE_PRESERVED_LINEAGE_V01.md`.
+
+User-confirmed Delete for the interruption source A, generated continuation C (including descendants), or Quick target B means **delete the selected Entry and only its own Execution/history**, excluding its deleted actual/Completed contribution from Review; it does not mean display-only hide. **All surviving Entries/Executions remain untouched.** A deleted root or intermediate ancestor required by living descendants is represented solely by minimal owner-scoped, non-visible chain ancestry and original nullable estimate baseline metadata; never by a fake Execution or visible deleted Task. The retained baseline is used only while surviving logical work needs it and cannot count as deleted actual/Completed history. Surviving user-entered estimates are not silently overwritten.
+
+Deleting either B or C removes that pair's Quick B→C direct-below display relation, not the other Entry; deleting A retains B→C pairing if B and C survive. Use one guarded atomic, exact-replay single-Entry correction, with explicit destructive confirmation, legacy-client compatibility, ownership/CAS/integrity and no auto-resume. A **narrow additive backward-compatible APP migration** and isolated persistent nonprod-first QA after APP/AUTH backup gates are approved. D-016 historic preservation is superseded only for this explicitly user-requested single-Entry hard-delete correction; D-028/D-073 chain baseline and unrelated D-181 Quick semantics remain. Unapproved chain re-root, unrelated destructive history changes, production writes, restore, significant dependency/security/cost effects require STOP. **Code has not yet implemented D-182.**
+
+
 ## D-180 — Android Today Section Header Progress v0.1
 
 Canonical Decision: `docs/decisions/D-180_ANDROID_SECTION_HEADER_PROGRESS_V01.md`
