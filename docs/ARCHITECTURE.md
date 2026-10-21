@@ -640,6 +640,13 @@ Projection layerはSectionの保存順を先に適用し、Section内でExecutio
 
 InterruptEntryはtarget Bのactual Section解決・planned start保持をStartと共有し、continuationをinterrupt logical minute cohortの通常tailへ配置する。B-direct-after専用のshiftは使わず、source interruption、target move、continuation、revision exactly-once、replay / ambiguityを一つのlogical atomic outcomeとして扱う。D-081は既存schema / migration / API command familyを拡張しない。
 
+### D-181 Approved narrow exception to D-081 projection (Quick Interrupt only)
+
+D-181 Option A (2026-10-21) explicitly changes **display order only** for a Quick-generated target B and the unique Planned continuation C created for B's interrupted source A. Keep B in the usual D-081 Section-scoped historical execution order; while B is visible and C is still Planned, emit C **immediately following B** exactly once, ahead of other ordinary Planned rows, even if their planned-start value/position would ordinarily place them earlier. This is a localized interleave, **not** a reordering of historical anchors, not a new physical position write, and not a change to D-073's existing ordinary-Interrupt cohort behavior. Unpaired historical and Planned entries preserve their existing relative orders, and all D-078/D-079 guarded planning/placement operations retain their authority.
+
+The B→C pairing is based on canonical durable Quick-operation identity, not a title, heuristic position, or client-only relationship; it must survive rename/replay/cross-client reload. The Day projection must not duplicate C in the normal Planned suffix. If B is filtered out (e.g. Completed-hidden) or missing, C stays in the normal Planned ordering; if C has started, it follows ordinary historical execution ordering. Sequential Quick Interrupts create independent anchored pairs, without introducing arbitrary grouping/stack semantics or auto-resume. The exception must be consistent between Web and Android canonical Day consumers. Quick continuation's D-028 persisted adjacency and unspecified planned start remain untouched; D-073's supersession is confined to ordinary planned-B interruption.
+
+
 ## D-082 current-Day auto-carry convergence
 
 D-082はAPP `user_settings.auto_carry_overdue_planned`（INTEGER `NOT NULL DEFAULT 0`, `CHECK (0,1)`）とoperations command CHECKの互換拡張だけをmigration `0024`で追加する。AUTH、Entry / TaskChuteDayのcheckpoint column、追加checkpoint table、Routine Definition schema、dependencyは変更しない。operations table rebuildでは既存全row、fingerprint、outcome、FK / PK、command typeを保存する。
