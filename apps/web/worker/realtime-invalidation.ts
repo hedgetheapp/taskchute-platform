@@ -45,7 +45,8 @@ export function realtimeScopesForMutation(request: Request): RealtimeScope[] {
 export function affectsWearRunningProjection(request: Request): boolean {
   if (request.method !== "POST") return false;
   const path = new URL(request.url).pathname;
-  return /^\/api\/v1\/entries\/[^/]+\/(?:start|complete|interrupt|estimate|execution-times|revert-start|task-metadata|routine-estimate)$/.test(path);
+  return path === "/api/v1/taskchute-days/current/quick-interrupt"
+    || /^\/api\/v1\/entries\/[^/]+\/(?:start|complete|interrupt|estimate|execution-times|revert-start|task-metadata|routine-estimate)$/.test(path);
 }
 
 export function serializePublishRequest(scopes: RealtimeScope[]): string | null {

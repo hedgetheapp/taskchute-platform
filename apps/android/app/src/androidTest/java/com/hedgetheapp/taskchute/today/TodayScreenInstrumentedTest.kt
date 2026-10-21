@@ -458,6 +458,69 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun quickInterruptButtonCreatesAndConfirmsQuickTask() {
+        val initial = interruptDay()
+        val repo = FakeTodayRepository(initialDay = initial).apply {
+            quickInterruptResult = TodayQuickInterruptResult.Confirmed(6)
+            onQuickInterruptAccepted = { request -> currentDay = quickInterruptedDay(initial, request) }
+        }
+        launchScreen(repo)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val panelBounds = composeRule.onNodeWithTag("running-task-panel").fetchSemanticsNode().boundsInRoot
+        val buttonBounds = composeRule.onNodeWithTag("quick-interrupt-button").fetchSemanticsNode().boundsInRoot
+        assertEquals(with(composeRule.density) { 104.dp.toPx() }, panelBounds.height, 1f)
+        assertEquals(with(composeRule.density) { 48.dp.toPx() }, buttonBounds.height, 1f)
+        assertTrue(buttonBounds.top >= panelBounds.top && buttonBounds.bottom <= panelBounds.bottom)
+        composeRule.onNodeWithText("割込").assertIsDisplayed().performClick()
+
+        composeRule.waitUntil(10_000) {
+            repo.quickInterruptCalls.get() == 1 && controller?.state?.pendingEntryIds?.isEmpty() == true
+                && controller?.state?.day?.activeExecution?.entryId == repo.quickInterruptRequests.singleOrNull()?.targetEntryId
+        }
+        val request = repo.quickInterruptRequests.single()
+        val day = requireNotNull(controller?.state?.day)
+        assertEquals(0, repo.interruptCalls.get())
+        assertEquals(TodayExecutionOutcome.INTERRUPTED, day.allEntries.single { it.id == "entry-a" }.lastOutcome)
+        assertTrue(day.allEntries.single { it.id == request.targetEntryId }.quickInterruptOrigin)
+        assertEquals(LifecycleState.PLANNED, day.allEntries.single { it.id == request.continuationEntryId }.lifecycleState)
+        assertEquals(null, day.allEntries.single { it.id == request.continuationEntryId }.plannedStartMinute)
+        assertEquals(1, day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING })
+    }
+
+    @Test
+    fun quickInterruptRunningTaskCanEditItsTitleThroughExistingEditor() {
+        val planningRepository = FakePlanningRepository()
+        val running = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
+            title = "（割込）",
+            taskId = "quick-task",
+            quickInterruptOrigin = true,
+        )
+        val day = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(running))),
+            activeExecution = TodayExecution("execution-1", running.id, "2026-09-14T01:00:00Z", null),
+        )
+        launchPlanningScreen(planningRepository, initialDay = day)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText("（割込）").get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
+
+        val titleField = composeRule.onNode(hasSetTextAction() and hasText("（割込）"), useUnmergedTree = true)
+        titleField.assertIsEnabled()
+        titleField.performTextClearance()
+        composeRule.onAllNodes(
+            hasSetTextAction() and hasText("", substring = false),
+            useUnmergedTree = true,
+        ).get(0).performTextInput("Phone call")
+        composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
+        composeRule.waitUntil(5_000) { planningRepository.saveCalls.get() == 1 }
+
+        assertEquals("Phone call", planningRepository.lastInput?.title)
+        assertEquals(true, planningRepository.lastEditor?.allowRunningQuickInterruptTitleEdit)
+    }
+
+    @Test
     fun runningPanelCompleteDispatchesOnceAndCompletedTaskHasNoStart() {
         val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)).apply { holdComplete = true })
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -657,6 +720,60 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("表示").performClick()
         composeRule.onNodeWithContentDescription("完了タスクを表示").performClick()
         composeRule.onNodeWithText("Completed visibility row").assertIsDisplayed()
+    }
+
+    @Test
+    fun quickInterruptContinuationFollowsVisibleTargetAndReturnsToPlannedOrderWhenTargetIsHidden() {
+        todayPreferences().setShowCompleted(false)
+        val base = dayWith().sections.single().entries.single()
+        val quickTarget = base.copy(
+            id = "quick-target",
+            title = "Quick B",
+            lifecycleState = LifecycleState.COMPLETED,
+            quickInterruptOrigin = true,
+            firstStartedAt = "2026-09-14T10:00:00Z",
+        )
+        val laterHistory = base.copy(
+            id = "later-history",
+            title = "Later history",
+            lifecycleState = LifecycleState.COMPLETED,
+            firstStartedAt = "2026-09-14T10:30:00Z",
+        )
+        val planned = base.copy(id = "planned-p", title = "Planned P", lifecycleState = LifecycleState.PLANNED)
+        val continuation = base.copy(
+            id = "continuation-c",
+            title = "Continue C",
+            lifecycleState = LifecycleState.PLANNED,
+            quickInterruptTargetEntryId = quickTarget.id,
+        )
+        val initial = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(
+                entries = listOf(quickTarget, laterHistory, planned, continuation),
+                displayEntryOrder = listOf(quickTarget.id, continuation.id, laterHistory.id, planned.id),
+            )),
+        )
+        launchScreen(FakeTodayRepository(initialDay = initial))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Planned P").assertIsDisplayed()
+        composeRule.onNodeWithText("Continue C").assertIsDisplayed()
+        assertTrue(
+            composeRule.onNodeWithText("Planned P").fetchSemanticsNode().boundsInRoot.top
+                < composeRule.onNodeWithText("Continue C").fetchSemanticsNode().boundsInRoot.top,
+        )
+        assertTrue(composeRule.onAllNodesWithText("Quick B").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithContentDescription("表示").performClick()
+        composeRule.onNodeWithContentDescription("完了タスクを表示").performClick()
+        composeRule.onNodeWithText("Quick B").assertIsDisplayed()
+        assertTrue(
+            composeRule.onNodeWithText("Quick B").fetchSemanticsNode().boundsInRoot.top
+                < composeRule.onNodeWithText("Continue C").fetchSemanticsNode().boundsInRoot.top,
+        )
+        assertTrue(
+            composeRule.onNodeWithText("Continue C").fetchSemanticsNode().boundsInRoot.top
+                < composeRule.onNodeWithText("Later history").fetchSemanticsNode().boundsInRoot.top,
+        )
     }
 
     @Test
@@ -3314,6 +3431,10 @@ class TodayScreenInstrumentedTest {
         var interruptResult: TodayInterruptResult = TodayInterruptResult.Rejected("unsupported", "unsupported")
         @Volatile
         var onInterruptAccepted: ((TodayInterruptEntryRequest) -> Unit)? = null
+        @Volatile
+        var quickInterruptResult: TodayQuickInterruptResult = TodayQuickInterruptResult.Rejected("unsupported", "unsupported")
+        @Volatile
+        var onQuickInterruptAccepted: ((TodayQuickInterruptRequest) -> Unit)? = null
         val releaseLoad = CountDownLatch(1)
         val releaseRefresh = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
@@ -3321,7 +3442,9 @@ class TodayScreenInstrumentedTest {
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
         val interruptCalls = AtomicInteger()
+        val quickInterruptCalls = AtomicInteger()
         val interruptRequests = CopyOnWriteArrayList<TodayInterruptEntryRequest>()
+        val quickInterruptRequests = CopyOnWriteArrayList<TodayQuickInterruptRequest>()
         val requestedDates = mutableListOf<String?>()
         private val heldLogicalDates = ConcurrentHashMap.newKeySet<String>()
         private val dateReadStarted = ConcurrentHashMap<String, CountDownLatch>()
@@ -3395,6 +3518,13 @@ class TodayScreenInstrumentedTest {
             interruptRequests += request
             onInterruptAccepted?.invoke(request)
             return interruptResult
+        }
+
+        override fun quickInterruptTask(request: TodayQuickInterruptRequest): TodayQuickInterruptResult {
+            quickInterruptCalls.incrementAndGet()
+            quickInterruptRequests += request
+            onQuickInterruptAccepted?.invoke(request)
+            return quickInterruptResult
         }
     }
 
@@ -3569,6 +3699,50 @@ class TodayScreenInstrumentedTest {
                 placementRevision = request.expectedPlacementRevision + 1,
                 sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
                 activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", 600),
+            )
+        }
+
+        fun quickInterruptedDay(initial: TodayDay, request: TodayQuickInterruptRequest): TodayDay {
+            val source = initial.allEntries.single { it.id == request.sourceEntryId }.copy(
+                lifecycleState = LifecycleState.COMPLETED,
+                executionId = null,
+                activeStartedAt = null,
+                lastEndedAt = "2026-09-14T01:01:00Z",
+                lastOutcome = TodayExecutionOutcome.INTERRUPTED,
+            )
+            val target = source.copy(
+                id = request.targetEntryId,
+                title = "（割込）",
+                lifecycleState = LifecycleState.RUNNING,
+                project = null,
+                mode = null,
+                estimateSeconds = null,
+                plannedStartMinute = null,
+                executionId = request.targetExecutionId,
+                activeStartedAt = "2026-09-14T01:01:00Z",
+                routineDerived = false,
+                taskId = request.quickTaskId,
+                primaryDocumentId = null,
+                startReminderOffsetMinutes = null,
+                notifyOnEstimateOverrun = false,
+                routineBaseTitle = null,
+                routineDefinitionId = null,
+                lastOutcome = null,
+                quickInterruptOrigin = true,
+            )
+            val continuation = source.copy(
+                id = request.continuationEntryId,
+                lifecycleState = LifecycleState.PLANNED,
+                executionId = null,
+                activeStartedAt = null,
+                plannedStartMinute = null,
+                estimateSeconds = 540,
+                lastOutcome = null,
+            )
+            return initial.copy(
+                placementRevision = request.expectedPlacementRevision + 1,
+                sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
+                activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", null),
             )
         }
 

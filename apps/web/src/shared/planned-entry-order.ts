@@ -3,6 +3,8 @@ export interface CanonicalOrderEntry {
   lifecycle_state: "planned" | "running" | "completed";
   planned_start_minute: number | null;
   position: number;
+  /** D-181: durable Quick B identity on its exact Planned continuation C. */
+  quick_interrupt_target_entry_id?: string | null;
   first_started_at?: string | null;
   execution_summary?: { first_started_at: string | null };
 }
@@ -34,6 +36,32 @@ export function canonicalizeEntryOrder<T extends CanonicalOrderEntry>(entries: T
   const historical = entries.filter((entry) => entry.lifecycle_state !== "planned").sort(compareHistoricalEntries);
   const planned = entries.filter((entry) => entry.lifecycle_state === "planned").sort(comparePlannedEntries);
   return [...historical, ...planned];
+}
+
+/**
+ * Applies only the D-181 Quick B -> Planned C display exception over the
+ * already-canonical D-081 order. Stored positions and mutation order stay intact.
+ */
+export function canonicalizeQuickInterruptDisplayOrder<T extends CanonicalOrderEntry>(entries: T[]): T[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry] as const));
+  const continuationByTarget = new Map<string, T>();
+  for (const entry of entries) {
+    const targetId = entry.quick_interrupt_target_entry_id;
+    if (!targetId || entry.lifecycle_state !== "planned") continue;
+    const target = byId.get(targetId);
+    if (!target || target.lifecycle_state === "planned" || target.id === entry.id) continue;
+    if (!continuationByTarget.has(targetId)) continuationByTarget.set(targetId, entry);
+  }
+
+  const pairedContinuationIds = new Set([...continuationByTarget.values()].map((entry) => entry.id));
+  const displayed: T[] = [];
+  for (const entry of entries) {
+    if (pairedContinuationIds.has(entry.id)) continue;
+    displayed.push(entry);
+    const continuation = entry.id ? continuationByTarget.get(entry.id) : undefined;
+    if (continuation) displayed.push(continuation);
+  }
+  return displayed;
 }
 
 export function isSamePlannedStartCohort(left: CanonicalOrderEntry | undefined, right: CanonicalOrderEntry | undefined): boolean {

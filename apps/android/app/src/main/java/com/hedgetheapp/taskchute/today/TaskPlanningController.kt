@@ -96,6 +96,8 @@ class TaskPlanningController(
                     notifyOnEstimateOverrun = task.notifyOnEstimateOverrun,
                 ),
                 capability = capability,
+                allowRunningQuickInterruptTitleEdit = day.isCurrent
+                    && task.lifecycleState == LifecycleState.RUNNING && task.quickInterruptOrigin,
             ),
         )
         loadReferences()

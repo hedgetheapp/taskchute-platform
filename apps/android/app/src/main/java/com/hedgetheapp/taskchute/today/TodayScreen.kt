@@ -427,6 +427,8 @@ fun TodayScreen(
                                             task = task,
                                             controller = controller,
                                             enabled = !state.pendingEntryIds.contains(task.id),
+                                            quickInterruptEnabled = directManipulationController?.state?.pendingEntryIds.isNullOrEmpty()
+                                                && directManipulationController?.state?.unresolvedRequest == null,
                                         )
                                     }
                                 }
@@ -1208,9 +1210,16 @@ private fun TodayContent(
                         },
                     )
                 }
-                val visibleSectionEntries = if (showCompleted) section.entries else {
+                val visibleBaseEntries = if (showCompleted) section.entries else {
                     section.entries.filter { it.lifecycleState != LifecycleState.COMPLETED }
                 }
+                val computedDisplayEntries = canonicalQuickInterruptDisplayOrder(visibleBaseEntries)
+                val projectedDisplayOrder = section.displayEntryOrder
+                val projectedOrderMatches = showCompleted && projectedDisplayOrder != null
+                    && projectedDisplayOrder == computedDisplayEntries.map(TodayTask::id)
+                val visibleSectionEntries = if (projectedOrderMatches) {
+                    projectedDisplayOrder!!.mapNotNull { id -> visibleBaseEntries.firstOrNull { it.id == id } }
+                } else computedDisplayEntries
                 if (section.id !in collapsedSectionIds) items(visibleSectionEntries, key = { it.id }) { task ->
                     val historicalDay = !day.isCurrent && !day.planningEnabled && day.taskChuteDayId != null
                     val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
@@ -2730,7 +2739,13 @@ private fun OperationFailedPanel() {
 }
 
 @Composable
-private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier = Modifier) {
+private fun RunningTaskPanel(
+    task: TodayTask,
+    controller: TodayController,
+    enabled: Boolean,
+    quickInterruptEnabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
     var now by remember(task.id, task.activeStartedAt, task.firstStartedAt, task.estimateSeconds) {
         mutableStateOf(Instant.now())
     }
@@ -2749,7 +2764,7 @@ private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabl
     val progressColor = if ((progress.overrunSeconds ?: 0L) > 0L) RUNNING_OVERRUN_COLOR else TaskChuteColors.AccentBlue
 
     Card(
-        modifier = modifier.fillMaxWidth().height(104.dp),
+        modifier = modifier.fillMaxWidth().height(104.dp).testTag("running-task-panel"),
         colors = CardDefaults.cardColors(containerColor = TaskChuteColors.RunningSurface),
         shape = RoundedCornerShape(22.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -2759,7 +2774,7 @@ private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabl
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(40.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -2771,6 +2786,15 @@ private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabl
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                 )
+                if (controller.showQuickInterruptAction(task)) {
+                    TextButton(
+                        onClick = { controller.quickInterrupt(task) },
+                        enabled = enabled && quickInterruptEnabled && controller.canQuickInterrupt(task),
+                        modifier = Modifier.height(48.dp).testTag("quick-interrupt-button"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) { Text("割込", fontSize = 13.sp) }
+                }
+                Spacer(Modifier.width(4.dp))
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -2921,6 +2945,7 @@ private fun TaskEditorForm(
     val titleEditable = editor.mode == TaskEditorMode.CREATE
         || editor.capability == TaskEditorCapability.FULL_PLANNING
         || editor.capability == TaskEditorCapability.ROUTINE_PLANNING
+        || editor.allowRunningQuickInterruptTitleEdit
     var projectExpanded by remember(editor) { mutableStateOf(false) }
     var modeExpanded by remember(editor) { mutableStateOf(false) }
     var sectionExpanded by remember(editor) { mutableStateOf(false) }
@@ -2946,7 +2971,7 @@ private fun TaskEditorForm(
             fontWeight = FontWeight.Bold,
             color = TaskChuteColors.PrimaryText,
         )
-        if (lifecycleMetadataOnly) {
+        if (lifecycleMetadataOnly && !editor.allowRunningQuickInterruptTitleEdit) {
             Text("Task名: ${draft.title}", color = TaskChuteColors.SecondaryText)
         } else {
             CompactFigmaTextField(

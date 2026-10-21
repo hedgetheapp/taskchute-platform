@@ -35,6 +35,8 @@ data class TodayTask(
     val routineBaseTitle: String? = null,
     val routineDefinitionId: String? = null,
     val lastOutcome: TodayExecutionOutcome? = null,
+    val quickInterruptOrigin: Boolean = false,
+    val quickInterruptTargetEntryId: String? = null,
 )
 
 enum class TodayExecutionOutcome {
@@ -55,6 +57,7 @@ data class TodaySection(
     val endMinute: Int?,
     val entries: List<TodayTask>,
     val actualEndInstant: String? = null,
+    val displayEntryOrder: List<String>? = null,
 )
 
 data class TodayExecution(
@@ -125,6 +128,27 @@ internal fun resolveInitialSection(day: TodayDay, now: java.time.ZonedDateTime):
     } ?: day.sections.firstOrNull()
 }
 
+/** Applies the narrow D-181 Quick B -> Planned C exception over D-081 section order. */
+internal fun canonicalQuickInterruptDisplayOrder(entries: List<TodayTask>): List<TodayTask> {
+    val byId = entries.associateBy(TodayTask::id)
+    val continuationByTarget = linkedMapOf<String, TodayTask>()
+    entries.forEach { entry ->
+        val targetId = entry.quickInterruptTargetEntryId ?: return@forEach
+        if (entry.lifecycleState != LifecycleState.PLANNED) return@forEach
+        val target = byId[targetId] ?: return@forEach
+        if (target.lifecycleState == LifecycleState.PLANNED || target.id == entry.id) return@forEach
+        continuationByTarget.putIfAbsent(targetId, entry)
+    }
+    val continuationIds = continuationByTarget.values.mapTo(mutableSetOf(), TodayTask::id)
+    return buildList {
+        entries.forEach { entry ->
+            if (entry.id in continuationIds) return@forEach
+            add(entry)
+            continuationByTarget[entry.id]?.let(::add)
+        }
+    }
+}
+
 data class TodayHttpResponse(
     val status: Int?,
     val body: String?,
@@ -141,11 +165,30 @@ data class TodayInterruptEntryRequest(
     val expectedPlacementRevision: Int,
 )
 
+data class TodayQuickInterruptRequest(
+    val operationId: String,
+    val taskChuteDayId: String,
+    val sourceEntryId: String,
+    val activeExecutionId: String,
+    val quickTaskId: String,
+    val targetEntryId: String,
+    val targetExecutionId: String,
+    val continuationEntryId: String,
+    val expectedPlacementRevision: Int,
+)
+
 sealed interface TodayInterruptResult {
     data class Confirmed(val placementRevision: Int) : TodayInterruptResult
     data object Unauthorized : TodayInterruptResult
     data class Rejected(val code: String, val message: String) : TodayInterruptResult
     data class Ambiguous(val message: String) : TodayInterruptResult
+}
+
+sealed interface TodayQuickInterruptResult {
+    data class Confirmed(val placementRevision: Int) : TodayQuickInterruptResult
+    data object Unauthorized : TodayQuickInterruptResult
+    data class Rejected(val code: String, val message: String) : TodayQuickInterruptResult
+    data class Ambiguous(val message: String) : TodayQuickInterruptResult
 }
 
 sealed interface TodayResult {
@@ -170,6 +213,9 @@ interface TodayRepository {
 
     fun interruptTask(request: TodayInterruptEntryRequest): TodayInterruptResult =
         TodayInterruptResult.Rejected("unsupported", "中断・継続を実行できませんでした。")
+
+    fun quickInterruptTask(request: TodayQuickInterruptRequest): TodayQuickInterruptResult =
+        TodayQuickInterruptResult.Rejected("unsupported", "割り込みを実行できませんでした。")
 }
 
 enum class TodayLoadStatus {

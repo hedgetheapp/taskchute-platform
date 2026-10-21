@@ -59,6 +59,7 @@ data class TaskEditorState(
     val originalTask: TodayTask?,
     val draft: TaskEditorDraft,
     val capability: TaskEditorCapability = TaskEditorCapability.FULL_PLANNING,
+    val allowRunningQuickInterruptTitleEdit: Boolean = false,
 )
 
 /**

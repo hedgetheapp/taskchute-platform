@@ -406,6 +406,10 @@ export interface EntryProjection {
   section_id: string | null;
   position: number;
   lifecycle_state: "planned" | "running" | "completed";
+  /** D-181 explicit durable origin marker; absent means older server/fixture. */
+  quick_interrupt_origin?: boolean;
+  /** D-181 durable target identity on this Quick Interrupt continuation. */
+  quick_interrupt_target_entry_id?: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
   /** D-155: per-Entry local Android start reminder; absent is tolerated for old fixtures/clients. */
@@ -448,6 +452,8 @@ export interface SectionProjection {
   actual_start_instant: string | null;
   actual_end_instant: string | null;
   estimate_total_seconds: number;
+  /** Canonical D-181 display order layered over the unchanged D-081 entry order. */
+  display_entry_order?: string[];
   entries: EntryProjection[];
 }
 
@@ -778,6 +784,41 @@ export interface InterruptEntryResult {
     section_id: string;
     position: number;
     planned_start_minute: number;
+    estimate_seconds: number | null;
+  };
+}
+
+export interface QuickInterruptEntryRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  source_entry_id: string;
+  active_execution_id: string;
+  quick_task_id: string;
+  target_entry_id: string;
+  target_execution_id: string;
+  continuation_entry_id: string;
+  expected_placement_revision: number;
+}
+
+export interface QuickInterruptEntryResult {
+  taskchute_day_id: string;
+  source_entry_id: string;
+  quick_task_id: string;
+  target_entry_id: string;
+  target_execution_id: string;
+  continuation_entry_id: string;
+  quick_interrupt_origin: "quick_interrupt";
+  interruption_instant: string;
+  section_id: string;
+  placement_revision: number;
+  source_execution: ExecutionProjection;
+  target_execution: ExecutionProjection;
+  continuation: {
+    entry_id: string;
+    task_id: string;
+    section_id: string;
+    position: number;
+    planned_start_minute: null;
     estimate_seconds: number | null;
   };
 }

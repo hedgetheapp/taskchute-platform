@@ -498,6 +498,118 @@ class TodayControllerTest {
     }
 
     @Test
+    fun quickInterruptWaitsForCanonicalReadbackWithoutOptimisticLifecycleChanges() {
+        val initial = interruptDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            quickInterruptResults = listOf(TodayQuickInterruptResult.Confirmed(6))
+            onQuickInterruptCall = { request, _ -> loadResultAfterFirst = TodayResult.Success(quickInterruptedDay(initial, request)) }
+            holdQuickInterrupt = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.activeExecution?.entryId == "entry-a" })
+
+        val source = initial.allEntries.single { it.id == "entry-a" }
+        assertTrue(controller.showQuickInterruptAction(source))
+        assertTrue(controller.canQuickInterrupt(source))
+        controller.quickInterrupt(source)
+
+        assertTrue(repository.quickInterruptStarted.await(2, TimeUnit.SECONDS))
+        val request = repository.quickInterruptRequests.single()
+        assertEquals("day-1", request.taskChuteDayId)
+        assertEquals("entry-a", request.sourceEntryId)
+        assertEquals("execution-a", request.activeExecutionId)
+        assertEquals(5, request.expectedPlacementRevision)
+        assertEquals(5, listOf(
+            request.operationId, request.quickTaskId, request.targetEntryId,
+            request.targetExecutionId, request.continuationEntryId,
+        ).distinct().size)
+        assertEquals(null, controller.state.optimisticDay)
+        assertEquals("entry-a", controller.state.day?.activeExecution?.entryId)
+        assertEquals(LifecycleState.RUNNING, controller.state.day?.allEntries?.single { it.id == "entry-a" }?.lifecycleState)
+        assertTrue(controller.state.pendingEntryIds.containsAll(listOf("entry-a", request.targetEntryId)))
+        assertFalse(controller.canQuickInterrupt(source))
+
+        repository.releaseQuickInterrupt.countDown()
+        assertTrue(awaitState(controller) {
+            it.pendingEntryIds.isEmpty() && it.day?.activeExecution?.entryId == request.targetEntryId
+        })
+        val canonical = requireNotNull(controller.state.day)
+        assertEquals(TodayExecutionOutcome.INTERRUPTED, canonical.allEntries.single { it.id == "entry-a" }.lastOutcome)
+        assertTrue(canonical.allEntries.single { it.id == request.targetEntryId }.quickInterruptOrigin)
+        assertEquals(LifecycleState.PLANNED, canonical.allEntries.single { it.id == request.continuationEntryId }.lifecycleState)
+        assertNull(canonical.allEntries.single { it.id == request.continuationEntryId }.plannedStartMinute)
+        assertEquals(1, canonical.allEntries.count { it.lifecycleState == LifecycleState.RUNNING })
+        controller.close()
+    }
+
+    @Test
+    fun ambiguousQuickInterruptRetriesTheSameRequestAndWaitsForProjectionConfirmation() {
+        val initial = interruptDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            quickInterruptResults = listOf(
+                TodayQuickInterruptResult.Ambiguous("transport uncertain"),
+                TodayQuickInterruptResult.Confirmed(6),
+            )
+            onQuickInterruptCall = { request, attempt ->
+                if (attempt == 2) loadResultAfterFirst = TodayResult.Success(quickInterruptedDay(initial, request))
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.activeExecution?.entryId == "entry-a" })
+
+        controller.quickInterrupt(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(awaitState(controller) { it.canRetryInterrupt })
+        val firstRequest = repository.quickInterruptRequests.single()
+        assertEquals("entry-a", controller.state.day?.activeExecution?.entryId)
+        assertFalse(controller.state.pendingEntryIds.isEmpty())
+
+        controller.retryInterrupt()
+
+        assertTrue(awaitState(controller) {
+            it.pendingEntryIds.isEmpty() && it.interruptFeedback == null
+                && it.day?.activeExecution?.id == firstRequest.targetExecutionId
+        })
+        assertEquals(2, repository.quickInterruptRequests.size)
+        assertSame(firstRequest, repository.quickInterruptRequests[1])
+        assertEquals(firstRequest, repository.quickInterruptRequests[1])
+        assertEquals(firstRequest.operationId, repository.quickInterruptRequests[1].operationId)
+        assertEquals(firstRequest.quickTaskId, repository.quickInterruptRequests[1].quickTaskId)
+        assertEquals(firstRequest.targetEntryId, repository.quickInterruptRequests[1].targetEntryId)
+        assertEquals(firstRequest.continuationEntryId, repository.quickInterruptRequests[1].continuationEntryId)
+        controller.close()
+    }
+
+    @Test
+    fun quickInterruptRejectsRoutineNonCurrentCrossDayAndUnestablishedSources() {
+        val base = interruptDay()
+        val routineSource = base.copy(sections = base.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == "entry-a") it.copy(routineDerived = true) else it })
+        })
+        val nonCurrent = base.copy(isCurrent = false)
+        val crossDay = base.copy(activeEntry = TodayActiveEntry("prior-entry", "prior-task", "Prior", LifecycleState.RUNNING, 600))
+        val unestablished = base.copy(taskChuteDayId = null)
+        val mismatched = base.copy(activeExecution = TodayExecution("execution-other", "entry-a", "2026-09-14T01:00:00Z", 600))
+
+        listOf(routineSource, nonCurrent, crossDay, unestablished, mismatched).forEach { initial ->
+            val repository = FakeRepository().apply { loadResult = TodayResult.Success(initial) }
+            val controller = controller(repository)
+            controller.loadCurrent()
+            assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+            assertTrue(awaitState(controller) { it.day != null })
+            controller.quickInterrupt(initial.allEntries.single { it.id == "entry-a" })
+            assertEquals(0, repository.quickInterruptCalls.get())
+            assertTrue(controller.state.pendingEntryIds.isEmpty())
+            controller.close()
+        }
+    }
+
+    @Test
     fun crossDayActiveEntryCanCompleteAndQueueCurrentDayStart() {
         val initial = crossDayDay()
         val currentRowIds = initial.allEntries.map { it.id }
@@ -1103,13 +1215,16 @@ class TodayControllerTest {
         var startResult: TodayMutationResult = TodayMutationResult.Success
         var completeResult: TodayMutationResult = TodayMutationResult.Success
         var interruptResults: List<TodayInterruptResult> = emptyList()
+        var quickInterruptResults: List<TodayQuickInterruptResult> = emptyList()
         var onInterruptCall: ((TodayInterruptEntryRequest, Int) -> Unit)? = null
+        var onQuickInterruptCall: ((TodayQuickInterruptRequest, Int) -> Unit)? = null
         var completedTask: TodayTask? = null
         var loadResultAfterFirst: TodayResult? = null
         var loadResults: List<TodayResult>? = null
         var holdLoad = false
         var holdStart = false
         var holdComplete = false
+        var holdQuickInterrupt = false
         var holdSecondLoad = false
         val loadStarted = CountDownLatch(1)
         val reloadStarted = CountDownLatch(1)
@@ -1120,10 +1235,14 @@ class TodayControllerTest {
         val releaseStart = CountDownLatch(1)
         val completeStarted = CountDownLatch(1)
         val releaseComplete = CountDownLatch(1)
+        val quickInterruptStarted = CountDownLatch(1)
+        val releaseQuickInterrupt = CountDownLatch(1)
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
         val interruptCalls = AtomicInteger()
+        val quickInterruptCalls = AtomicInteger()
         val interruptRequests = CopyOnWriteArrayList<TodayInterruptEntryRequest>()
+        val quickInterruptRequests = CopyOnWriteArrayList<TodayQuickInterruptRequest>()
         val startedEntryIds = CopyOnWriteArrayList<String>()
         val startPlacementRevisions = CopyOnWriteArrayList<Int>()
         val events = CopyOnWriteArrayList<String>()
@@ -1229,6 +1348,15 @@ class TodayControllerTest {
             events += "interrupt:${request.operationId}"
             return interruptResults.getOrNull(attempt - 1) ?: TodayInterruptResult.Rejected("unsupported", "unsupported")
         }
+
+        override fun quickInterruptTask(request: TodayQuickInterruptRequest): TodayQuickInterruptResult {
+            val attempt = quickInterruptCalls.incrementAndGet()
+            quickInterruptRequests += request
+            onQuickInterruptCall?.invoke(request, attempt)
+            quickInterruptStarted.countDown()
+            if (holdQuickInterrupt) releaseQuickInterrupt.await(2, TimeUnit.SECONDS)
+            return quickInterruptResults.getOrNull(attempt - 1) ?: TodayQuickInterruptResult.Rejected("unsupported", "unsupported")
+        }
     }
 
     private companion object {
@@ -1321,6 +1449,53 @@ class TodayControllerTest {
                 placementRevision = request.expectedPlacementRevision + 1,
                 sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
                 activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", 600),
+            )
+        }
+
+        fun quickInterruptedDay(initial: TodayDay, request: TodayQuickInterruptRequest): TodayDay {
+            val source = initial.allEntries.single { it.id == request.sourceEntryId }.copy(
+                lifecycleState = LifecycleState.COMPLETED,
+                executionId = null,
+                activeStartedAt = null,
+                lastEndedAt = "2026-09-14T01:01:00Z",
+                lastOutcome = TodayExecutionOutcome.INTERRUPTED,
+            )
+            val target = source.copy(
+                id = request.targetEntryId,
+                title = "（割込）",
+                lifecycleState = LifecycleState.RUNNING,
+                project = null,
+                mode = null,
+                estimateSeconds = null,
+                plannedStartMinute = null,
+                executionId = request.targetExecutionId,
+                activeStartedAt = "2026-09-14T01:01:00Z",
+                routineDerived = false,
+                taskId = request.quickTaskId,
+                primaryDocumentId = null,
+                firstStartedAt = null,
+                lastEndedAt = null,
+                completedDurationSeconds = null,
+                startReminderOffsetMinutes = null,
+                notifyOnEstimateOverrun = false,
+                routineBaseTitle = null,
+                routineDefinitionId = null,
+                lastOutcome = null,
+                quickInterruptOrigin = true,
+            )
+            val continuation = source.copy(
+                id = request.continuationEntryId,
+                lifecycleState = LifecycleState.PLANNED,
+                executionId = null,
+                activeStartedAt = null,
+                plannedStartMinute = null,
+                estimateSeconds = 540,
+                lastOutcome = null,
+            )
+            return initial.copy(
+                placementRevision = request.expectedPlacementRevision + 1,
+                sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
+                activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", null),
             )
         }
 

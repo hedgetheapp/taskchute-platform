@@ -5,7 +5,7 @@ import type {
   ExecutionProjection,
   SectionProjection,
 } from "../../src/shared/contracts";
-import { canonicalizeEntryOrder } from "../../src/shared/planned-entry-order";
+import { canonicalizeEntryOrder, canonicalizeQuickInterruptDisplayOrder } from "../../src/shared/planned-entry-order";
 import {
   isLogicalDate,
   resolveSectionIntervals,
@@ -59,6 +59,8 @@ interface EntryRow {
   lifecycle_state: "planned" | "running" | "completed";
   task_id: string;
   task_title: string;
+  quick_interrupt_origin: boolean;
+  quick_interrupt_target_entry_id: string | null;
   primary_document_id: string | null;
   future_routine_definition_id: string | null;
   project_id: string | null;
@@ -142,6 +144,9 @@ function toEntryRow(value: unknown): EntryRow {
   const projectTitle = row.project_title;
   if (projectId !== null && typeof projectId !== "string") throw new Error("Invalid persistence row: project_id");
   if (projectTitle !== null && typeof projectTitle !== "string") throw new Error("Invalid persistence row: project_title");
+  if (row.quick_interrupt_origin !== null && row.quick_interrupt_origin !== "quick_interrupt") {
+    throw new Error("Invalid persistence row: quick_interrupt_origin");
+  }
   return {
     entry_id: requiredString(row, "entry_id"),
     section_id: row.section_id === null ? null : requiredString(row, "section_id"),
@@ -149,6 +154,9 @@ function toEntryRow(value: unknown): EntryRow {
     lifecycle_state: lifecycle,
     task_id: requiredString(row, "task_id"),
     task_title: requiredString(row, "task_title"),
+    quick_interrupt_origin: row.quick_interrupt_origin === "quick_interrupt",
+    quick_interrupt_target_entry_id: row.quick_interrupt_target_entry_id === null
+      ? null : requiredString(row, "quick_interrupt_target_entry_id"),
     base_task_title: typeof row.base_task_title === "string" ? row.base_task_title : requiredString(row, "task_title"),
     primary_document_id: row.primary_document_id === null ? null : requiredString(row, "primary_document_id"),
     future_routine_definition_id: row.future_routine_definition_id === null
@@ -398,10 +406,12 @@ async function loadEstablishedProjection(
                 execution_summary.active_execution_id AS execution_active_id,
                 execution_summary.last_outcome AS execution_last_outcome,
                 t.id AS task_id,
-                CASE WHEN ro.id IS NOT NULL AND e.lifecycle_state = 'planned' THEN COALESCE(ro.title_override, t.title)
+                CASE WHEN e.lifecycle_state = 'running' AND t.quick_interrupt_origin = 'quick_interrupt' THEN t.title
+                     WHEN ro.id IS NOT NULL AND e.lifecycle_state = 'planned' THEN COALESCE(ro.title_override, t.title)
                      WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
                      WHEN ets.entry_id IS NOT NULL THEN ets.task_title ELSE t.title END AS task_title,
-                t.title AS base_task_title,
+                t.title AS base_task_title, t.quick_interrupt_origin,
+                qip.target_entry_id AS quick_interrupt_target_entry_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
@@ -432,6 +442,8 @@ async function loadEstablishedProjection(
              ON ets.app_user_id = e.app_user_id AND ets.entry_id = e.id
            LEFT JOIN entry_modes em
              ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+           LEFT JOIN quick_interrupt_entry_pairs qip
+             ON qip.app_user_id = e.app_user_id AND qip.continuation_entry_id = e.id
            LEFT JOIN mode_definitions md
              ON md.app_user_id = em.app_user_id AND md.id = em.mode_id
            LEFT JOIN entry_mode_snapshots ems
@@ -496,6 +508,9 @@ async function loadEstablishedProjection(
       section_id: row.section_id,
       position: row.position,
       lifecycle_state: row.lifecycle_state,
+      quick_interrupt_origin: row.quick_interrupt_origin,
+      ...(row.quick_interrupt_target_entry_id === null
+        ? {} : { quick_interrupt_target_entry_id: row.quick_interrupt_target_entry_id }),
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
       start_reminder_offset_minutes: row.start_reminder_offset_minutes,
@@ -561,13 +576,17 @@ async function loadEstablishedProjection(
       entriesBySection.set(row.section_id, collection);
     }
   }
-  const sections: SectionProjection[] = sectionResult.results.map(toSectionRow).map((section) => ({
-    id: section.id, title: section.title, logical_start_minute: section.logical_start_minute,
-    logical_end_minute: section.logical_end_minute, actual_start_instant: section.actual_start_instant,
-    actual_end_instant: section.actual_end_instant,
-    estimate_total_seconds: (entriesBySection.get(section.id) ?? []).reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
-    entries: canonicalizeEntryOrder(entriesBySection.get(section.id) ?? []),
-  }));
+  const sections: SectionProjection[] = sectionResult.results.map(toSectionRow).map((section) => {
+    const entries = canonicalizeEntryOrder(entriesBySection.get(section.id) ?? []);
+    return {
+      id: section.id, title: section.title, logical_start_minute: section.logical_start_minute,
+      logical_end_minute: section.logical_end_minute, actual_start_instant: section.actual_start_instant,
+      actual_end_instant: section.actual_end_instant,
+      estimate_total_seconds: entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
+      display_entry_order: canonicalizeQuickInterruptDisplayOrder(entries).map((entry) => entry.id),
+      entries,
+    };
+  });
   const projectedSectionIds = new Set(sections.map((section) => section.id));
   if ([...entriesBySection.keys()].some((sectionId) => !projectedSectionIds.has(sectionId))) {
     throw new Error("Entry references a Section outside its TaskChuteDay context");

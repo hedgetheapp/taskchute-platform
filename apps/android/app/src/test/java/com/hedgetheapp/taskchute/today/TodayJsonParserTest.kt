@@ -52,6 +52,32 @@ class TodayJsonParserTest {
     }
 
     @Test
+    fun quickInterruptOriginIsParsedAndLegacyProjectionDefaultsToFalse() {
+        val marked = TodayJsonParser.parse(SAMPLE.replace(
+            "\"routine\":null",
+            "\"quick_interrupt_origin\":true,\"quick_interrupt_target_entry_id\":\"target-entry\",\"routine\":null",
+        ))
+        val legacy = TodayJsonParser.parse(SAMPLE)
+
+        assertEquals(true, marked.sections.single().entries.single().quickInterruptOrigin)
+        assertEquals("target-entry", marked.sections.single().entries.single().quickInterruptTargetEntryId)
+        assertEquals(false, legacy.sections.single().entries.single().quickInterruptOrigin)
+        assertNull(legacy.sections.single().entries.single().quickInterruptTargetEntryId)
+    }
+
+    @Test
+    fun canonicalQuickInterruptDisplayOrderIsParsedAndRemainsOptional() {
+        val projected = TodayJsonParser.parse(SAMPLE.replace(
+            "\"entries\":[",
+            "\"display_entry_order\":[\"e1\"],\"entries\":[",
+        ))
+        val legacy = TodayJsonParser.parse(SAMPLE)
+
+        assertEquals(listOf("e1"), projected.sections.single().displayEntryOrder)
+        assertNull(legacy.sections.single().displayEntryOrder)
+    }
+
+    @Test
     fun parsesInterruptedOutcomeWithoutReclassifyingLifecycle() {
         val completedProjection = SAMPLE
             .replace("\"lifecycle_state\":\"running\"", "\"lifecycle_state\":\"completed\"")

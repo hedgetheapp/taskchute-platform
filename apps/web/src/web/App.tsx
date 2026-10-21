@@ -58,7 +58,7 @@ import type {
   UpdateRoutineRequest,
 } from "../shared/contracts";
 import { mergeRealtimeScopes, type RealtimeRefresh, type RealtimeScope } from "../shared/realtime";
-import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
+import { canonicalizeQuickInterruptDisplayOrder, isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, conflictMinutesCeiling, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError, authSubjectIdFromSession } from "./api";
@@ -7711,7 +7711,17 @@ export function App() {
         </div>
         {groups.map((section) => {
           const orderedEntries = section.entries;
-          const visibleEntries = showCompleted ? orderedEntries : orderedEntries.filter((entry) => entry.lifecycle_state !== "completed");
+          const projectedDisplayOrder = "display_entry_order" in section ? section.display_entry_order : undefined;
+          const projectedDisplayEntries: EntryProjection[] | undefined = projectedDisplayOrder?.map((entryId: string) =>
+            orderedEntries.find((entry: EntryProjection) => entry.id === entryId))
+            .filter((entry: EntryProjection | undefined): entry is EntryProjection => entry !== undefined);
+          const computedDisplayEntries = canonicalizeQuickInterruptDisplayOrder(orderedEntries);
+          const projectedOrderMatches = projectedDisplayEntries !== undefined
+            && projectedDisplayEntries.length === orderedEntries.length
+            && projectedDisplayEntries.every((entry, index) => entry.id === computedDisplayEntries[index]?.id);
+          const visibleEntries = showCompleted
+            ? (projectedOrderMatches ? projectedDisplayEntries : computedDisplayEntries)
+            : canonicalizeQuickInterruptDisplayOrder(orderedEntries.filter((entry) => entry.lifecycle_state !== "completed"));
           const pendingAdds = pendingAddTasks.filter((item) => item.sectionId === section.id);
           const pendingAnchorId = (item: PendingAddTask): string | null => {
             const placement = item.operation.placement;

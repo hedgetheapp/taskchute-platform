@@ -64,6 +64,87 @@ class TodayHttpRepository(
         )
     }
 
+    override fun quickInterruptTask(operation: TodayQuickInterruptRequest): TodayQuickInterruptResult {
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(operation.operationId)}","taskchute_day_id":"${JsonEncoding.escape(operation.taskChuteDayId)}","source_entry_id":"${JsonEncoding.escape(operation.sourceEntryId)}","active_execution_id":"${JsonEncoding.escape(operation.activeExecutionId)}","quick_task_id":"${JsonEncoding.escape(operation.quickTaskId)}","target_entry_id":"${JsonEncoding.escape(operation.targetEntryId)}","target_execution_id":"${JsonEncoding.escape(operation.targetExecutionId)}","continuation_entry_id":"${JsonEncoding.escape(operation.continuationEntryId)}","expected_placement_revision":${operation.expectedPlacementRevision}}
+        """.trimIndent()
+        val response = try {
+            request("POST", "/api/v1/taskchute-days/current/quick-interrupt", body)
+        } catch (_: Exception) {
+            null
+        }
+        if (response?.status == null) {
+            return TodayQuickInterruptResult.Ambiguous("割り込みの保存状態を確認できません。")
+        }
+        if (response.status == 401) {
+            onUnauthorized()
+            return TodayQuickInterruptResult.Unauthorized
+        }
+        if (response.status in 200..299) {
+            val revision = runCatching { parseQuickInterruptPlacementRevision(response.body, operation) }.getOrNull()
+            return revision?.let(TodayQuickInterruptResult::Confirmed)
+                ?: TodayQuickInterruptResult.Ambiguous("割り込みの保存状態を確認できません。")
+        }
+        val error = parseInterruptError(response.body)
+        if (response.status >= 500 || error?.first == "infrastructure_ambiguous" || error?.third == true) {
+            return TodayQuickInterruptResult.Ambiguous("割り込みの保存状態を確認できません。")
+        }
+        return TodayQuickInterruptResult.Rejected(
+            code = error?.first ?: "http_${response.status}",
+            message = error?.second ?: "割り込みの前提が変わりました。Todayを再読み込みしてください。",
+        )
+    }
+
+    private fun parseQuickInterruptPlacementRevision(body: String?, request: TodayQuickInterruptRequest): Int {
+        val root = JsonParser(body ?: "").parse() as? JsonValue.Object
+            ?: error("QuickInterruptEntry response must be an object")
+        fun requiredString(obj: JsonValue.Object, key: String): String =
+            (obj.fields[key] as? JsonValue.StringValue)?.value?.takeIf { it.isNotBlank() }
+                ?: error("QuickInterruptEntry response $key must be a non-empty string")
+        fun requiredObject(obj: JsonValue.Object, key: String): JsonValue.Object =
+            obj.fields[key] as? JsonValue.Object ?: error("QuickInterruptEntry response $key must be an object")
+        fun requiredInt(obj: JsonValue.Object, key: String): Int =
+            (obj.fields[key] as? JsonValue.NumberValue)?.value?.toIntOrNull()
+                ?: error("QuickInterruptEntry response $key must be an integer")
+
+        require(requiredString(root, "taskchute_day_id") == request.taskChuteDayId)
+        require(requiredString(root, "source_entry_id") == request.sourceEntryId)
+        require(requiredString(root, "quick_task_id") == request.quickTaskId)
+        require(requiredString(root, "target_entry_id") == request.targetEntryId)
+        require(requiredString(root, "target_execution_id") == request.targetExecutionId)
+        require(requiredString(root, "continuation_entry_id") == request.continuationEntryId)
+        require(requiredString(root, "quick_interrupt_origin") == "quick_interrupt")
+        requiredString(root, "interruption_instant")
+        requiredString(root, "section_id")
+
+        val sourceExecution = requiredObject(root, "source_execution")
+        require(requiredString(sourceExecution, "id") == request.activeExecutionId)
+        require(requiredString(sourceExecution, "entry_id") == request.sourceEntryId)
+        requiredString(sourceExecution, "started_at")
+        requiredString(sourceExecution, "ended_at")
+        require(requiredString(sourceExecution, "outcome") == "interrupted")
+
+        val targetExecution = requiredObject(root, "target_execution")
+        require(requiredString(targetExecution, "id") == request.targetExecutionId)
+        require(requiredString(targetExecution, "entry_id") == request.targetEntryId)
+        requiredString(targetExecution, "started_at")
+        require(targetExecution.fields["ended_at"] == JsonValue.Null)
+
+        val continuation = requiredObject(root, "continuation")
+        require(requiredString(continuation, "entry_id") == request.continuationEntryId)
+        requiredString(continuation, "task_id")
+        require(requiredString(continuation, "section_id") == requiredString(root, "section_id"))
+        require(requiredInt(continuation, "position") > 0)
+        require(continuation.fields["planned_start_minute"] == JsonValue.Null)
+        val estimate = continuation.fields["estimate_seconds"]
+        require(estimate == null || estimate == JsonValue.Null ||
+            ((estimate as? JsonValue.NumberValue)?.value?.toIntOrNull()?.let { it >= 0 } == true))
+
+        val revision = requiredInt(root, "placement_revision")
+        require(revision == request.expectedPlacementRevision + 1)
+        return revision
+    }
+
     private fun parseInterruptPlacementRevision(body: String?, request: TodayInterruptEntryRequest): Int {
         val root = JsonParser(body ?: "").parse() as? JsonValue.Object
             ?: error("InterruptEntry response must be an object")

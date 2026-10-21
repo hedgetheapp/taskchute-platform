@@ -247,6 +247,57 @@ class TodayHttpRepositoryTest {
         assertTrue(malformedSuccess.interruptTask(INTERRUPT_REQUEST) is TodayInterruptResult.Ambiguous)
     }
 
+    @Test
+    fun quickInterruptUsesDedicatedCurrentDayCommandAndReplaysTheExactPayload() {
+        val requests = mutableListOf<Triple<String, String, String>>()
+        val repository = TodayHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body.orEmpty())
+                TodayHttpResponse(200, quickInterruptResult(QUICK_INTERRUPT_REQUEST))
+            },
+            onUnauthorized = {},
+        )
+
+        assertEquals(TodayQuickInterruptResult.Confirmed(8), repository.quickInterruptTask(QUICK_INTERRUPT_REQUEST))
+        assertEquals(TodayQuickInterruptResult.Confirmed(8), repository.quickInterruptTask(QUICK_INTERRUPT_REQUEST))
+        assertEquals(2, requests.size)
+        assertEquals("POST", requests.first().first)
+        assertEquals("/api/v1/taskchute-days/current/quick-interrupt", requests.first().second)
+        assertEquals(requests.first().third, requests.last().third)
+        assertTrue(requests.first().third.contains("\"operation_id\":\"quick-operation-1\""))
+        assertTrue(requests.first().third.contains("\"quick_task_id\":\"quick-task-1\""))
+        assertTrue(requests.first().third.contains("\"source_entry_id\":\"source-entry\""))
+        assertTrue(requests.first().third.contains("\"continuation_entry_id\":\"continuation-a\""))
+        assertTrue(requests.first().third.contains("\"expected_placement_revision\":7"))
+    }
+
+    @Test
+    fun quickInterruptSeparatesAmbiguousOutcomeFromDeterministicRejectionAndValidatesResponse() {
+        var handoffs = 0
+        val ambiguous = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(503, """{"error":{"code":"infrastructure_ambiguous","message":"private","reconcile":true}}""") },
+            onUnauthorized = {},
+        )
+        val stale = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(409, """{"error":{"code":"revision_conflict","message":"stale"}}""") },
+            onUnauthorized = {},
+        )
+        val malformed = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, quickInterruptResult(QUICK_INTERRUPT_REQUEST).replace("quick-task-1", "wrong-task")) },
+            onUnauthorized = {},
+        )
+        val unauthorized = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(401, null) },
+            onUnauthorized = { handoffs++ },
+        )
+
+        assertTrue(ambiguous.quickInterruptTask(QUICK_INTERRUPT_REQUEST) is TodayQuickInterruptResult.Ambiguous)
+        assertEquals("revision_conflict", (stale.quickInterruptTask(QUICK_INTERRUPT_REQUEST) as TodayQuickInterruptResult.Rejected).code)
+        assertTrue(malformed.quickInterruptTask(QUICK_INTERRUPT_REQUEST) is TodayQuickInterruptResult.Ambiguous)
+        assertEquals(TodayQuickInterruptResult.Unauthorized, unauthorized.quickInterruptTask(QUICK_INTERRUPT_REQUEST))
+        assertEquals(1, handoffs)
+    }
+
     private companion object {
         const val CANONICAL_NONPROD_URL = "https://taskchute-web-nonprod.taskfulness-sync.workers.dev"
         val INTERRUPT_REQUEST = TodayInterruptEntryRequest(
@@ -254,6 +305,17 @@ class TodayHttpRepositoryTest {
             taskChuteDayId = "day-1",
             sourceEntryId = "source-entry",
             activeExecutionId = "execution-a",
+            targetEntryId = "target-entry",
+            targetExecutionId = "execution-b",
+            continuationEntryId = "continuation-a",
+            expectedPlacementRevision = 7,
+        )
+        val QUICK_INTERRUPT_REQUEST = TodayQuickInterruptRequest(
+            operationId = "quick-operation-1",
+            taskChuteDayId = "day-1",
+            sourceEntryId = "source-entry",
+            activeExecutionId = "execution-a",
+            quickTaskId = "quick-task-1",
             targetEntryId = "target-entry",
             targetExecutionId = "execution-b",
             continuationEntryId = "continuation-a",
@@ -281,6 +343,10 @@ class TodayHttpRepositoryTest {
 
         fun interruptResult(request: TodayInterruptEntryRequest) = """
             {"taskchute_day_id":"${request.taskChuteDayId}","source_entry_id":"${request.sourceEntryId}","target_entry_id":"${request.targetEntryId}","continuation_entry_id":"${request.continuationEntryId}","interruption_instant":"2026-09-14T09:01:00Z","interruption_logical_minute":541,"placement_revision":${request.expectedPlacementRevision + 1},"source_execution":{"id":"${request.activeExecutionId}","entry_id":"${request.sourceEntryId}","started_at":"2026-09-14T09:00:00Z","ended_at":"2026-09-14T09:01:00Z","outcome":"interrupted"},"target_execution":{"id":"${request.targetExecutionId}","entry_id":"${request.targetEntryId}","started_at":"2026-09-14T09:01:00Z","ended_at":null,"outcome":null},"continuation":{"entry_id":"${request.continuationEntryId}","task_id":"task-a","section_id":"section-1","position":2,"planned_start_minute":541,"estimate_seconds":540}}
+        """.trimIndent()
+
+        fun quickInterruptResult(request: TodayQuickInterruptRequest) = """
+            {"taskchute_day_id":"${request.taskChuteDayId}","source_entry_id":"${request.sourceEntryId}","quick_task_id":"${request.quickTaskId}","quick_interrupt_origin":"quick_interrupt","target_entry_id":"${request.targetEntryId}","target_execution_id":"${request.targetExecutionId}","continuation_entry_id":"${request.continuationEntryId}","interruption_instant":"2026-09-14T09:01:00Z","section_id":"section-1","placement_revision":${request.expectedPlacementRevision + 1},"source_execution":{"id":"${request.activeExecutionId}","entry_id":"${request.sourceEntryId}","started_at":"2026-09-14T09:00:00Z","ended_at":"2026-09-14T09:01:00Z","outcome":"interrupted"},"target_execution":{"id":"${request.targetExecutionId}","entry_id":"${request.targetEntryId}","started_at":"2026-09-14T09:01:00Z","ended_at":null},"continuation":{"entry_id":"${request.continuationEntryId}","task_id":"task-a","section_id":"section-1","position":2,"planned_start_minute":null,"estimate_seconds":540}}
         """.trimIndent()
 
         fun plannedTask() = TodayTask(

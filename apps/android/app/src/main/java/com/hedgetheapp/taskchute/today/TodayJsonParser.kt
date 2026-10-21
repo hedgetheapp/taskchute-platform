@@ -70,6 +70,7 @@ internal object TodayJsonParser {
         endMinute = value.nullableIntField("logical_end_minute"),
         entries = value.arrayField("entries").map { it.asObject() }.map(::parseTask),
         actualEndInstant = value.nullableStringField("actual_end_instant"),
+        displayEntryOrder = value.nullableStringArrayField("display_entry_order"),
     )
 
     private fun parseTask(value: JsonValue.Object): TodayTask {
@@ -114,6 +115,8 @@ internal object TodayJsonParser {
             routineBaseTitle = routine?.nullableStringField("base_task_title") ?: if (routine != null) task.stringField("title") else null,
             routineDefinitionId = routine?.nullableStringField("routine_definition_id"),
             lastOutcome = lastOutcome,
+            quickInterruptOrigin = value.nullableBooleanField("quick_interrupt_origin") ?: false,
+            quickInterruptTargetEntryId = value.nullableStringField("quick_interrupt_target_entry_id"),
         )
     }
 
@@ -135,6 +138,14 @@ internal object TodayJsonParser {
 
     private fun JsonValue.Object.arrayField(name: String): List<JsonValue> =
         (fields[name] as? JsonValue.Array)?.values ?: error("Today field '$name' must be an array")
+
+    private fun JsonValue.Object.nullableStringArrayField(name: String): List<String>? = when (val value = fields[name]) {
+        null, JsonValue.Null -> null
+        is JsonValue.Array -> value.values.map { item ->
+            (item as? JsonValue.StringValue)?.value ?: error("Today field '$name' items must be strings")
+        }
+        else -> error("Today field '$name' must be an array or null")
+    }
 
     private fun JsonValue.Object.stringField(name: String): String =
         (fields[name] as? JsonValue.StringValue)?.value ?: error("Today field '$name' must be a string")

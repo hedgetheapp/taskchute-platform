@@ -32,6 +32,7 @@ import {
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { interruptEntry, isInterruptEntryRequest } from "./application/interrupt-entry";
+import { quickInterruptEntry, isQuickInterruptEntryRequest } from "./application/quick-interrupt-entry";
 import {
   isRevertEntryStartRequest,
   isSetExecutionTimesRequest,
@@ -514,6 +515,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid current-Day AddTaskToDay request");
     }
     return mutationResponse(await addTaskToDay(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/quick-interrupt") {
+    const body = await readBoundedJson(request);
+    if (!isQuickInterruptEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid QuickInterruptEntry request");
+    return mutationResponse(await quickInterruptEntry(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/by-logical-date/entries") {
     const body = await readBoundedJson(request);

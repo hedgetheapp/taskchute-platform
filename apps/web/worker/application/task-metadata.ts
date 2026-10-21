@@ -67,6 +67,7 @@ interface MetadataRow {
   routine_project_title: string | null;
   has_completed_execution: number;
   active_execution_count: number;
+  quick_interrupt_origin: string | null;
 }
 
 interface ProjectRow { id: string; title: string }
@@ -88,7 +89,9 @@ export async function updateTaskMetadata(
     ? resolveTaskChuteDay(nowInstant, { timezone: settings.timezone, boundaryMinutes: settings.day_boundary_minutes }).logicalDate
     : null;
   const row = await db.prepare(`SELECT e.task_id, t.title AS task_title,
-      COALESCE(ets.task_title, t.title) AS entry_task_title, t.project_id AS task_project_id,
+      CASE WHEN e.lifecycle_state = 'running' AND t.quick_interrupt_origin = 'quick_interrupt' THEN t.title
+        ELSE COALESCE(ets.task_title, t.title) END AS entry_task_title, t.project_id AS task_project_id,
+      t.quick_interrupt_origin,
       p.title AS task_project_title,
       CASE WHEN e.lifecycle_state = 'planned' THEN COALESCE(ro.title_override, rs.task_title, t.title)
            WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
@@ -273,6 +276,8 @@ export async function updateTaskMetadata(
     && row.lifecycle_state === "planned" && row.routine_occurrence_id === null;
   const isRunningMetadataUpdate = isCurrent
     && row.lifecycle_state === "running" && row.routine_occurrence_id === null;
+  const isQuickInterruptRunningTitleEdit = isRunningMetadataUpdate
+    && row.quick_interrupt_origin === "quick_interrupt";
   const isHistoricalRunningCorrection = isPast && row.lifecycle_state === "running"
     && row.routine_occurrence_id === null && row.active_execution_count === 1;
   const isCompletedHistoricalCorrection = (isCurrent || isPast) && row.lifecycle_state === "completed"
@@ -299,6 +304,7 @@ export async function updateTaskMetadata(
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Future-Day Task title is read-only; only Project assignment can change");
   }
   if ((isRunningMetadataUpdate || isHistoricalRunningCorrection)
+    && !isQuickInterruptRunningTitleEdit
     && (request.title !== row.entry_task_title || request.expected_title !== row.entry_task_title)) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Running Entry Task title is read-only; only Project assignment can change");
   }
@@ -329,7 +335,7 @@ export async function updateTaskMetadata(
   const result: UpdateTaskMetadataResult = {
     entry_id: request.entry_id,
     task_id: request.task_id,
-    title: isEntryProjectSnapshotCorrection ? row.entry_task_title : isRunningMetadataUpdate ? row.task_title : request.title,
+    title: isEntryProjectSnapshotCorrection ? row.entry_task_title : request.title,
     project: project ? { id: project.id, title: project.title } : null,
   };
   if (isEntryProjectSnapshotCorrection) {

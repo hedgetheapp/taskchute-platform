@@ -123,6 +123,24 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun onlyCurrentRunningQuickInterruptEntryEnablesTitleEditing() {
+        val controller = controller(FakePlanningRepository())
+        val quickRunning = plannedTask(lifecycleState = LifecycleState.RUNNING, quickInterruptOrigin = true)
+
+        controller.openEdit(currentDay(), quickRunning)
+        assertTrue(controller.state.editor?.allowRunningQuickInterruptTitleEdit == true)
+        controller.dismiss()
+
+        controller.openEdit(currentDay(), plannedTask(lifecycleState = LifecycleState.RUNNING))
+        assertFalse(controller.state.editor?.allowRunningQuickInterruptTitleEdit == true)
+        controller.dismiss()
+
+        controller.openEdit(establishedPastDay(), quickRunning)
+        assertFalse(controller.state.editor?.allowRunningQuickInterruptTitleEdit == true)
+        controller.close()
+    }
+
+    @Test
     fun futurePlanningDayAllowsCreate() {
         val repository = FakePlanningRepository()
         val controller = controller(repository)
@@ -922,6 +940,8 @@ class TaskPlanningControllerTest {
         fun plannedTask(
             lifecycleState: LifecycleState = LifecycleState.PLANNED,
             routineDerived: Boolean = false,
+            quickInterruptOrigin: Boolean = false,
         ) = TodayTask("entry-1", "Task", lifecycleState, null, null, 600, 540, null, null, routineDerived)
+            .copy(quickInterruptOrigin = quickInterruptOrigin)
     }
 }

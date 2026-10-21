@@ -1,7 +1,7 @@
 import { HttpError } from "../application/errors";
 import { REQUEST_FINGERPRINT_VERSION } from "../application/fingerprint";
 
-export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry" | "InterruptEntry" | "RevertEntryStart"
+export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry" | "InterruptEntry" | "QuickInterruptEntry" | "RevertEntryStart"
   | "DuplicateEntry"
   | "BulkDeleteEntries"
   | "DeleteCompletedEntry"
