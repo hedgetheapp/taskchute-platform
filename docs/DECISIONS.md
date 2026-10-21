@@ -1144,6 +1144,10 @@ D-015の「別Entryがrunning中の通常Startはrejectする」は維持する�
 
 D-073 v0.1のcurrent-Day ordinary scopeは、D-028のうち「continuationをBの直下へ配置する」および「continuationのplanned startを自動入力しない」という二つの記述だけを、D-073の明示ルール（同一logical minuteではB直後、異なるminuteではinterrupt-minute cohort末尾、Bのplanned startは不変、continuationのplanned startはinterrupt実時刻のlogical minute）へ狭く置き換える。D-028のQuick Interrupt / Routine / broader interruption semanticsはD-073の対象外として維持し、複数continuationのProduct semanticsは`docs/OPEN_QUESTIONS.md`のOpen Questionのままとする。
 
+#### D-181 Quick Interrupt display-order exception — 2026-10-21 Approved (Option A)
+
+Product OwnerはD-028の「Quick割り込み先Bの直下に元Taskの続きCを表示する」方針を選択した。D-081のhistorical-first projectionと矛盾するため、**D-181のQuick Interruptによって生成されたBとそのcontinuation Cの1対に限り、CがPlannedでBが可視なら、canonical Day表示上Bの直下へCを一回だけ差し込む**例外をApprovedとする。Bを含む他のhistorical rowsの時系列相対順、無関係なPlanned rowsの相対順、Cの未実行状態、手動再開、D-073通常Interrupt、D-028のQuick continuationの開始予定なし・physical B直後、各Executionの実績・履歴は維持する。完了非表示などでBが画面にない場合はCを通常のPlanned表示へ戻し、Cを消さない。命名や位置の推測ではなく永続的なQuick B→C identityで対を確定する。複数Quick時は各対を独立適用し、新たなstack / grouping優先規則や自動再開は追加しない。実装境界と受入条件は `docs/decisions/D-181_ANDROID_QUICK_INTERRUPT_V01.md` を正本とする。
+
 ## D-029 — Revert the current Start without erasing earlier execution history
 Status: Approved
 
