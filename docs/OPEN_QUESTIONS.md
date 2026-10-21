@@ -503,8 +503,12 @@ D-073で、current-Day ordinary A/BのInterrupt / Continuation v0.1のatomic tra
 
 ### D-181 Quick Interrupt v0.1 resolved / remaining
 
-D-181のnarrow v0.1 contract、atomic Worker command / exact replay boundary、APP `0039`のowner-scoped Quick target → exact continuation relation、およびOption A display exceptionはApproved・実装済み（implementation `2685298dc4946144eef32c40cdad51479d070dbe`）。Focused automated verificationとexact-SHA CIはPASS。Persistent nonprod migration / QAおよびproduction mutation verificationは未実施であり、Product Verified / Releasedではない。
+D-181のnarrow v0.1 contract、atomic Worker command / exact replay boundary、APP `0039`のowner-scoped Quick target → exact continuation relation、およびOption A display exceptionはApproved・実装済み（implementation `2685298dc4946144eef32c40cdad51479d070dbe`）。Focused automated verification、exact-SHA CI、persistent nonprod migration / QAはPASS。Production mutation verificationは未実施であり、Product Verified / Releasedではない。
 
 引き続きOpenなのはRoutine-aware / non-current Day interruption、offline / process-death recovery、auto-resume、複数continuationへの追加grouping / priority semantics、Review UI、およびproduction mutation verificationである。これらをD-181 v0.1へ推論で追加しない。
+
+2026-10-21 hard-delete follow-up: Product intent for independently hard-deleting interrupted A, Quick continuation C, and Quick target B is Approved, but chain persistence semantics remain Open. Before implementation, choose how a deleted root's baseline and surviving ancestry are retained or re-rooted; how descendants of a deleted continuation are linked; and whether deleting B removes the B→C pair (leaving C in ordinary Planned order) or retains a non-visible pair tombstone. The existing Worker singleton guard remains authoritative. The read-only case analysis and specific options are in `docs/planning/2026-10-21_D181_RESPONSIVENESS_AND_HARD_DELETE_FOLLOWUP.md`; no migration or delete was run.
+
+2026-10-21 responsiveness follow-up is implemented and focused JVM / API 33 delayed-fake evidence is recorded in `docs/TEST_MATRIX.md`. The full Today surface run remains partial because five other assertions failed; this does not alter the hard-delete gate or D-181's Product Verified / Released `NO` status.
 
 2026-09-07 placement corrective investigation: started ordinary continuationは現在のsource guard上、後続のInterruptのsourceになり得る。今回のD-073 placement correctiveではこの挙動を変更せず、複数continuation / sequential interruptionのProduct semanticsを決定しない。これは引き続き本Open Questionとして扱い、今回のsame-Section later-minute B placement修正のblocking issueとはしない。
