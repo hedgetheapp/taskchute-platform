@@ -36,6 +36,16 @@ The Product Owner explicitly selected **Option A** after Codex identified the D-
 
 Acceptance: when other Planned rows already exist in B's Section, the user sees **B → C → other Planned work**, independent of those rows' planned-start cohort. An unrelated ordinary D-073 interruption continues to use its existing D-073/D-081 order; title edits and Completed-hide do not corrupt or lose C. Cover Running/Completed B, multiple Quick operations, completed-hidden, no duplicate C, and canonical Web/Android convergence using focused tests.
 
+## 2026-10-21 Android responsiveness corrective — Approved user feedback (implementation pending)
+
+The Product Owner's Galaxy S23 representative observation is that immediately after ordinary Task Start the bottom Running progress panel appears **before** the `割込` action, which only appears after several seconds; tapping `割込` shows an unwanted `割り込みを処理しています…` sentence and a perceptible delay before the next state.
+
+The approved UX corrective is:
+- On an eligible ordinary current-Day Task Start, render the Quick Interrupt affordance **at the same time as the bottom Running/progress panel**. Avoid the late-arriving/relayout button. Eligibility and ability to dispatch the server operation remain distinct: if Start is not yet canonically confirmed, the client must retain the user's Quick intent and await safe canonical identifiers before sending `QuickInterruptEntry`; if Start fails/stales, cancel the dependent Quick intent without generating facts. Keep safeguards for Routine, cross-Day, unresolved, stale identity, and double-tap.
+- Remove the ordinary in-progress textual message `割り込みを処理しています…`. Instead give immediate, compact, nonblocking inline response to the tap (e.g. a pressed/pending button state) with accessibility semantics; explicit error, authentication, and exact retry messages still appear when needed.
+- Minimize observable response latency and needless round-trips using safe UI-local provisional state and canonical reconciliation. The server remains the authority for Quick Task/Execution/Section/continuation; never imply a committed success before canonical proof or fabricate destructive history. Preserve D-181 atomic exactly-once behavior, immutable retry envelope, and owner/isolation guard. Document actual timing measurements rather than promising zero network latency.
+- The request to delete a `中断タスク` is recorded as a **separate unresolved destructive-behavior issue**. Existing `DeleteCompletedEntry` deliberately rejects Entries belonging to a continuation chain; distinguish deletion of the interrupted source history, the Quick target, and the planned continuation. Do not bypass chain guards, delete executions, unlink pairs, or broaden hard-delete until the Product Owner approves exact deletion semantics. Research and propose safe behavior separately.
+
 ## Approved technical boundary
 
 - **One new dedicated server command/API and the necessary backward-compatible APP migration are authorized**, including an operations command allow-list extension and minimal persisted Quick-origin/atomicity guard data if required. Exact SQL columns and index/guard layout are implementation details only so long as semantics, old data and compatibility remain intact.
