@@ -255,8 +255,8 @@ Current lifecycle implementation fact:
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
 - Pause / Resume representation
-- Interrupt / Quick Interrupt commandのexact atomicity / retry contract
-- interrupt continuation relationのexact physical model
+- D-073 / D-181 v0.1のApproved contractを越える、より広いinterrupt command / retry semantics
+- Routine-aware、non-current Day等のcontinuation relationとadditional lifecycle semantics beyond D-073 / D-181 v0.1
 - generic Cancel semantics（D-037のrunning deleteはApproved済みだが、独立したCancel operation全体は未定）
 - D-037のdeleted / removed Entryとcancelled Executionを表現するarchive / tombstone / outcome model
 - manual Execution correctionのaudit / revision / conflict semantics
@@ -500,5 +500,11 @@ remote production writeは明示承認なしに実施しない。
 D-073で、current-Day ordinary A/BのInterrupt / Continuation v0.1のatomic transaction、retry identity、same-minute / different-minute placement、chain estimate、legacy snapshot非捏造をApprovedとして実装した。これらの未決だったphysical modelはAPP `0023`、Worker integration、Web exact retry testsで解消した。
 
 引き続きOpenなのは、Routine-aware interruption、**D-181でApproved済みのQuick Interrupt v0.1範囲外の広い仕様**、pause / resume、auto-resume、non-current Day interruption、複数continuationの追加grouping / priority Product semantics、continuationのReview UI、persistent client queue、production mutation verificationである。D-181 v0.1のQuick B→Planned Cの表示上の直下配置は2026-10-21のOption Aで明示Approvedされ、D-081へQuick専用の狭い例外を設ける。D-073通常Interruptの順序は変更しない。これらのOpen事項をD-073 v0.1へ拡張しない。
+
+### D-181 Quick Interrupt v0.1 resolved / remaining
+
+D-181のnarrow v0.1 contract、atomic Worker command / exact replay boundary、APP `0039`のowner-scoped Quick target → exact continuation relation、およびOption A display exceptionはApproved・実装済み（implementation `2685298dc4946144eef32c40cdad51479d070dbe`）。Focused automated verificationとexact-SHA CIはPASS。Persistent nonprod migration / QAおよびproduction mutation verificationは未実施であり、Product Verified / Releasedではない。
+
+引き続きOpenなのはRoutine-aware / non-current Day interruption、offline / process-death recovery、auto-resume、複数continuationへの追加grouping / priority semantics、Review UI、およびproduction mutation verificationである。これらをD-181 v0.1へ推論で追加しない。
 
 2026-09-07 placement corrective investigation: started ordinary continuationは現在のsource guard上、後続のInterruptのsourceになり得る。今回のD-073 placement correctiveではこの挙動を変更せず、複数continuation / sequential interruptionのProduct semanticsを決定しない。これは引き続き本Open Questionとして扱い、今回のsame-Section later-minute B placement修正のblocking issueとはしない。

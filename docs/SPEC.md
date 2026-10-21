@@ -848,7 +848,9 @@ Status: Approved / implemented / persistent nonprod corrective verified.
 - Continuation estimateはchain rootのoriginal estimateからchain内累積actualを控除し、original estimateがNULLまたは残量が`<= 0`ならNULL。stable chain / parent relationとsourceのlive Mode relationを引き継ぐ。BのTask / Project / Mode snapshotは新規実行時に作り、legacy historical Task title snapshotはbackfillしない。
 - 成功、replay、operation-id misuse、stale active / placement、同時実行、D1 failure ambiguityはいずれも一つのatomic batchと既存D-066 exact retry / reconcile boundaryで扱う。APP `0023_interrupt_continuation.sql`のみを追加し、AUTH、既存active Execution制約、production境界は変更しない。
 
-## D-181 Quick Interrupt v0.1 — direct-below continuation (Approved, not yet implemented)
+## D-181 Quick Interrupt v0.1 — direct-below continuation (Approved, implemented)
+
+Implementation status: code is implemented at `2685298dc4946144eef32c40cdad51479d070dbe`; focused Worker/D1, Android JVM, migration, and API 33 local UI evidence plus exact-SHA CI are recorded in `docs/TEST_MATRIX.md`. Persistent nonprod migration/QA and production verification remain `NOT_RUN`; Product Verified and Released remain `NO`.
 
 The first Android Quick Interrupt v0.1 is approved by `docs/decisions/D-181_ANDROID_QUICK_INTERRUPT_V01.md`. While ordinary current-Day A is Running, a one-tap `割込` action atomically creates and starts ordinary Quick B (`（割込）`), ends A with interrupted outcome, and creates one ordinary Planned continuation C of A. The source's execution history and chain estimate facts remain intact; C is not automatically started after B finishes. Unique current Day/Section comes from server actual time. Quick B has no implicit Project / Mode / Note / reminder / estimate; title editing while Running remains possible. Routine-aware, non-current-Day, offline and auto-resume are not included.
 

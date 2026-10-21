@@ -611,17 +611,18 @@ Current mitigation / evidence:
 This remains a verification boundary, not approval for a broader Mode capability. D-070-ENV-02 is now authenticated-browser verified for the established future ordinary planned Entry closeout; Mode search, bulk/default/archive/delete/Routine semantics, and production remain outside scope and `NOT_RUN`.
 
 ## R-020 — Interrupt / Continuation atomicity and historical-fact risk
-Related: D-020, D-028, D-066, D-073
+Related: D-020, D-028, D-066, D-073, D-181
 
-Interrupting a running Entry while starting another can otherwise lose the source history, create two active Executions, place the continuation in the wrong cohort, or fabricate legacy Task-title facts. D-073 mitigates this with a dedicated command, exact source active-Execution and placement guards, one D1 mutation batch, explicit interrupted outcome, stable continuation chain / parent fields, frozen Section context, snapshot-only historical title projection, and post-write assertions for one active Execution and exact operation identity.
+Interrupting a running Entry while starting another can otherwise lose the source history, create two active Executions, place the continuation in the wrong cohort, or fabricate legacy Task-title facts. D-073 mitigates the ordinary planned-B flow with a dedicated command, exact source active-Execution and placement guards, one D1 mutation batch, explicit interrupted outcome, stable continuation chain / parent fields, frozen Section context, snapshot-only historical title projection, and post-write assertions for one active Execution and exact operation identity. D-181 separately implements the approved Quick Interrupt v0.1 atomic command, exact replay guards, durable owner-scoped target → continuation pairing, and bounded Option A projection; its new migration does not infer historical pairs.
 
 Current mitigation / evidence:
 
 - Worker full `24 files / 206 tests`、focused placement `6 / 6`、Web full `4 files / 229 tests`、focused D-073 Web `3 / 3`、migration `4 scenarios`、typecheck / exact nonprod build / dry-run PASS。focused integration covers same-minute / different-minute placement、same-Section later-minute B insertion、stale guards、replay / misuse、injected failure ambiguity、no-partial behavior。
 - APP `0023`をbackup HARD GATE後にpersistent nonprodへ適用し、APP/AUTH pending `0 / 0`、final generated-config Worker `dfe9d4e3-99f9-4f23-bfe8-2be6a27b358f`、safety `200 / 401 / 404`、APP/AUTH quick_check `ok`、FK empty、all read-only rows_written `0`を確認した。
 - Existing authenticated sessionでsame-SectionのA Start → 同一interrupt minute cohort → later-minute B normal Start（confirmationなし）を実施し、A visible `中断済み` / B running / continuation plannedを確認した。B Complete後もcontinuationはplannedのまま残り、reload / fresh authenticated tab、console warning / error emptyをPASSした。Persistent rowsでもsource outcome、target completion、same chain / parent、Section / position / logical minute、Bのplanned minute不変とinsertion後positionを突合した。複数continuationのProduct semanticsは引き続きOpen Questionであり、今回のplacement correctiveでは決定していない。
+- D-181 Quick Interrupt v0.1: focused Worker/D1 `17 / 17`、fresh / upgrade migration checks、Android JVM `105 / 105`、API 33 local UI `1 / 1`、exact-SHA CI PASS。Persistent nonprod migration / QA is `NOT_RUN` because required backup and QA identity hard-gate evidence is unavailable; Product Verified remains `NO`.
 
-Routine / Quick Interrupt / non-current Day / auto-resume / Review UI / production remain outside the mitigated scope.
+Routine / non-current Day / auto-resume / Review UI / production remain outside the mitigated scope. Quick Interrupt's local safeguards are implemented, while its persistent nonprod evidence remains outstanding.
 
 ## R-021 — Day keyboard shortcut focus / insertion convergence risk
 Related: D-020, D-031, D-039, D-066, D-073, D-074

@@ -1,14 +1,16 @@
 # D-181 — Android Quick Interrupt v0.1
 
-Status: **Approved (implementation pending)**
+Status: **Approved / Implemented**
 Approved: **2026-10-21** (Product Owner)
 Origin: Android Interrupt Phase 1 / Quick Interrupt feasibility report, followed by explicit Product Owner approval for the proposed Quick Interrupt design, new API, and APP DB migration.
+
+Implementation: `2685298dc4946144eef32c40cdad51479d070dbe`. Focused Worker/D1 `17 / 17`, Android JVM `105 / 105`, bounded fresh/upgrade migration checks, API 33 local UI `1 / 1`, and exact-SHA CI passed. Persistent nonprod migration/QA and production remain `NOT_RUN`; Product Verified and Released remain `NO`. See `docs/TEST_MATRIX.md` for evidence boundaries.
 
 ## Background and canonical authority
 
 References: `docs/DECISIONS.md` D-028 / D-073; `docs/SPEC.md` D-073; `docs/ARCHITECTURE.md` D-073 / D-081; `docs/OPEN_QUESTIONS.md`; `docs/planning/2026-10-20_ANDROID_INTERRUPT_PHASE1_AND_QUICK_FEASIBILITY.md`.
 
-D-073 already implements the ordinary planned-B interruption flow. Android Interrupt Phase 1 (`7276ad9685c8933509d5a6143350c0cf3d0929b9`) connects to that existing server command; Quick Interrupt remains unimplemented. This decision authorizes the **narrow Quick Interrupt v0.1 delta** without treating feasibility observations alone as approval for broader interruption semantics.
+D-073 already implements the ordinary planned-B interruption flow. Android Interrupt Phase 1 (`7276ad9685c8933509d5a6143350c0cf3d0929b9`) connects to that existing server command. At this decision's approval baseline, Quick Interrupt remained unimplemented. This decision authorizes the **narrow Quick Interrupt v0.1 delta** without treating feasibility observations alone as approval for broader interruption semantics.
 
 ## Approved product behavior
 

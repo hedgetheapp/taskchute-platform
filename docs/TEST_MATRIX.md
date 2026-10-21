@@ -1,3 +1,14 @@
+## D-181 Android Quick Interrupt v0.1 — 2026-10-21
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| QUICK-INTERRUPT-WORKER | Atomic Worker command and APP persistence | One Quick operation interrupts ordinary A, starts Quick B, creates its exact Planned continuation C, persists owner-scoped pairing, and supports exact replay without partial writes | Focused Worker/D1 integration suite `3 files / 17 tests PASS`; bounded fresh `0001→0039` and upgrade `0038→0039` migration checks PASS, with existing rows preserved and no inferred legacy pairs. | PASS / FOCUSED LOCAL + CI |
+| QUICK-INTERRUPT-PROJECTION | Canonical Day and Web/Android ordering | Apply approved Option A only while paired C is Planned and B is visible; keep unrelated historical/planned order, show C once, fall back when B is hidden, and return to normal lifecycle order after C starts | Worker projection integration and shared ordering helper tests PASS; Android parser / display-order tests included in `105 / 105` focused JVM total. Completed-hidden target and repeated independent pair cases are covered. | PASS / FOCUSED |
+| QUICK-INTERRUPT-ANDROID | Android action and continuation display | One tap initiates the command with stable retry IDs, feedback, editable Running title, and canonical reconciliation; display paired continuation directly below target | Focused Android JVM suites: `105 / 105 PASS`; API 33 local fake-repository UI test `quickInterruptContinuationFollowsVisibleTargetAndReturnsToPlannedOrderWhenTargetIsHidden` `1 / 1 PASS`; app and AndroidTest Kotlin compile PASS. | PASS / FOCUSED JVM + AVD |
+| QUICK-INTERRUPT-CI-APK | Exact implementation SHA and signed APK | Verify implementation commit and provide a Phone APK built from that exact SHA | Exact-SHA CI PASS for Worker/D1, Web, Android JVM, signed Phone/Wear builds, instrumentation APK compilation, signing-certificate validation, and artifact upload. The Phone APK was independently checked for versionCode and nonprod signer; artifact details are in the task handoff. | PASS / EXACT-SHA CI + ARTIFACT |
+| QUICK-INTERRUPT-NONPROD | Persistent nonprod migration and QA | Verify the approved migration and cross-client behavior against persistent nonprod only after backup and QA identity hard gates | NOT_RUN: required backup and QA identity hard-gate evidence is unavailable. No persistent nonprod migration/deploy or user-data QA was performed. | NOT_RUN / GATE |
+| QUICK-INTERRUPT-SCOPE | Production, Product Verified, release | Keep this increment within approved D-181 scope | Production `NOT_RUN`; Product Verified `NO`; Released `NO`. | PASS / SCOPE |
+
 ## Android Today Interrupt Phase 1 / Quick Interrupt feasibility — 2026-10-20
 
 | ID | Area | Requirement | Evidence | Status |
