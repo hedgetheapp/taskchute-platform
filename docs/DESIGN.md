@@ -850,6 +850,12 @@ When an ordinary planned row B is started while ordinary row A is running on the
 
 The optimistic presentation reconciles to the canonical Day after one atomic response. A is shown as interrupted history, B as running, and the continuation as planned with its canonical logical minute, Section, estimate, and inherited Mode. A pending or ambiguous InterruptEntry retains the exact request in the existing retry panel and is not silently discarded on navigation, reload, logout, or unload. The continuation remains planned after B completes.
 
+## D-181 Quick Interrupt v0.1 — Android action and direct-below continuation
+
+In the current-Day Android Running panel for an eligible ordinary task, a clearly labeled `割込` action starts a new ordinary Quick task titled `（割込）` immediately, without a dialog. The canonical successful response shows the original task as interrupted, Quick B as Running, and the source's Planned continuation C **directly below B**, so the user can manually choose the original work next. The adjacency is a narrow Quick-only D-081 projection exception approved on 2026-10-21 (Option A), not a blanket change to D-073 ordinary interruption or all historical/Planned rows. Keep existing Running progress, direct failure/retry, Done behavior, and normal title edit while Running.
+
+A Quick pair's Planned C is inserted once immediately after visible Quick target B; it is not automatically started and does not count as executed. Hide-Completed mode must **not hide C**: if its anchor B is hidden, C appears in ordinary Planned order. Completed B visible still anchors C; a started C follows normal historical order. Preserve the ordinary historical chronological relative order and unrelated Planned sorting, including when another Quick target creates an independent pair. Do not infer pairing from the text `（割込）`. Use server-canonical Day order across Android/Web; do not independently rearrange only the Android list.
+
 ## D-075 Day fixed header and task-list scroll
 
 D-075ではDay画面だけをcolumn flex viewportにし、date navigationとDay toolbarをscroll ownerの外側に残す。table column headingはDay surfaceの上端にopaque sticky headerとして残し、Section summaryはstickyにしない。Section summaryとTask rowは`.day-surface`という単一の`overflow: auto` owner内で縦横に移動する。root page scrollやnested vertical scrollを追加せず、short Dayは自然な空き、long Dayはsurface内のtask-list scrollになる。
