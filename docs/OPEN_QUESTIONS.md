@@ -4,6 +4,14 @@
 
 Resolved Decisionの正本は`docs/DECISIONS.md`を参照する。
 
+## D-182 nonprod pre-existing orphan lineage — unresolved (2026-10-22)
+
+An ACL-restricted operator APP export at schema `0039` passed SQLite quick/FK checks but a separate lineage probe found a missing continuation parent/root referenced by surviving Entries, including a completed row with Execution. This evidence has **not** yet been reconciled to current remote APP because Wrangler authentication expired. D-182 `0040` does not automatically reconstruct missing historical ancestors; existing D-182 approval **does not** authorize modifying these pre-existing persisted records. Nonprod migration/deploy/QA remains STOP until this gate is resolved.
+
+**Read-only questions:** Is the discrepancy still present on the current canonical nonprod APP? How many owners/chains and live/executed descendants are affected? Is a pre-`0040` deletion/operation responsible, or did an unrelated migration/legacy write leave it? What trustworthy contemporaneous operation/backup/snapshot evidence exists for the deleted parent/root, its original nullable baseline, and historical continuity? Does it implicate an older path that could affect other rows? Are fresh dual-DB backups independently validated? Operator-private data must never be copied to public docs.
+
+**Future Product Owner decision (not made):** once evidence is available, either explicitly authorize a precise, minimal evidence-grounded nonprod repair (with its own backup/test/rollback plan), or select an alternative approved containment/verification path that demonstrably preserves data and D-182 invariants. No guessed root/baseline, fabricated Execution or silent re-root/backfill. Reauthentication for **read-only** investigation is a separate operator action and does not authorize migration, deploy, QA mutation, restore, or Production. See `docs/RISKS.md` R-082 and `docs/decisions/D-182_INTERRUPTION_HARD_DELETE_PRESERVED_LINEAGE_V01.md`.
+
 ## D-178 Routine Activity guarded activation — status 2026-10-15
 
 Product semantics for forward-only Routine activity capture, owner-scoped activation, and the fail-closed event-date guard remain approved and implemented on `main` at feature SHA `a9fe1adb664cc1257b7470e3d5b672126a937d76`. Historical backfill remains prohibited. On 2026-10-15 the one approved QA identity was provisioned on canonical nonprod after read-only reconciliation and checksum-verified APP/AUTH exports; its credentials are recoverable only through a Windows DPAPI CurrentUser vault with a verified restrictive ACL. Exactly one QA-owner coverage marker is active.
