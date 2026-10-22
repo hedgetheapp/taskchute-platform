@@ -1,9 +1,15 @@
 # D-182 — Interruption-related Entry hard delete with non-visible surviving lineage v0.1
 
-**Status:** Approved (Product decision; implementation not started)
+**Status:** Approved / Implemented (`ee9b6df3bf0966bd645b93b9e31e6803d5cb8fff`) / Local focused and exact-SHA CI PASS / Persistent nonprod STOP before migration / Product Verified NO / Released NO
 **Approval:** 2026-10-21, Product Owner: requested that all three interruption-related Task rows be deletable, selected **Option A (delete Entry and its actual history, not hide)**, then explicitly approved the proposed **minimal non-visible lineage metadata** approach and a scoped APP migration/nonprod-first verification.
 **Source of truth:** This Decision, `docs/DECISIONS.md`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`; code and `docs/TEST_MATRIX.md` determine implementation/verification status.
 **Basis:** D-016 (historical facts), D-028 / D-073 (interrupt / continuation / baseline estimates), D-067 / D-128 / D-174 (single-Entry corrections), D-178 (Review), D-181 (Quick / pairing), and `docs/planning/2026-10-21_D181_RESPONSIVENESS_AND_HARD_DELETE_FOLLOWUP.md`.
+
+## Implementation and nonprod safety status (2026-10-22)
+
+Approved D-182 scope is implemented on `main@ee9b6df3bf0966bd645b93b9e31e6803d5cb8fff`; GitHub Actions run `39706831297` Web/Worker and Android jobs PASS, and the signed SHA-matching Phone APK has been delivered. Fresh/upgrade APP 0040 migration checks, Worker focused `34/34`, Android JVM `72/72` and focused API33 confirmation `1/1` PASS. **APP 0040 nonprod migration, Worker deploy and destructive synthetic QA remain STOP/NOT_RUN**, as do production and Product Verified/Released.
+
+A restricted legacy APP export (schema 0039) contains one orphan interruption continuation chain among 725 examined. The export's owner-scoped operation history on 2026-09-07 shows `InterruptEntry` followed by successful **`DeleteCompletedEntry`** of the now-missing interrupted root; the historical D-073 `f737565` delete code lacked the chain guard introduced at `2ae2ee3` on 2026-10-05. This substantiates the vulnerable deletion path but **does not authenticate the then-running deployed Worker**. Original deleted root estimate is UNKNOWN; `0040` never repairs legacy missing root IDs, and no guessed tombstone, historical Execution, Review actual, or parent is authorized. Current remote APP state and affected owner classification are unverified due to expired Wrangler authentication. A private read-only remote reconciliation and **separate Product Owner decision** for any historical repair, explicit unknown-baseline exception or fail-closed containment are mandatory before nonprod write. Details: `docs/RISKS.md` R-082, `docs/OPEN_QUESTIONS.md`, `docs/TEST_MATRIX.md`. This paragraph documents current evidence; it **does not expand the prior Approved D-182 technical envelope**.
 
 ## Product decision
 
