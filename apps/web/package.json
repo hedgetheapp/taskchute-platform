@@ -21,6 +21,7 @@
     "test:migrations:d116b": "node ./scripts/test-d116b-migration-bounded.mjs",
     "test:migrations:d163": "node ./scripts/test-d163-migration-bounded.mjs",
     "test:migrations:d181": "node ./scripts/test-d181-migration-bounded.mjs",
+    "test:migrations:d182": "node ./scripts/test-d182-migration-bounded.mjs",
     "test:all": "npm run test && npm run test:web",
     "test:dev-workflow": "node ./scripts/dev-workflow.test.mjs",
     "preflight": "node ./scripts/dev-workflow.mjs preflight",

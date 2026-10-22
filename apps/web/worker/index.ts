@@ -3,6 +3,7 @@ import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-d
 import { duplicateEntry, isDuplicateEntryRequest } from "./application/duplicate-entry";
 import { bulkDeleteEntries, isBulkDeleteEntriesRequest } from "./application/bulk-delete-entries";
 import { deleteCompletedEntry, isDeleteCompletedEntryRequest } from "./application/delete-completed-entry";
+import { deleteInterruptionEntry, isDeleteInterruptionEntryRequest } from "./application/delete-interruption-entry";
 import { bulkMoveEntriesToDay, isBulkMoveEntriesToDayRequest } from "./application/bulk-move-entries-to-day";
 import { bulkMoveEntriesToSection, isBulkMoveEntriesToSectionRequest } from "./application/bulk-move-entries-to-section";
 import { bulkMoveEntriesToSectionOccurrence, isBulkMoveEntriesToSectionOccurrenceRequest } from "./application/bulk-move-entries-to-section-occurrence";
@@ -546,6 +547,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid DeleteCompletedEntry request");
     }
     return mutationResponse(await deleteCompletedEntry(env.APP_DB, principal.appUserId, body));
+  }
+  const deleteInterruptionEntryMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/delete-interruption$/);
+  if (request.method === "POST" && deleteInterruptionEntryMatch) {
+    const body = await readBoundedJson(request);
+    if (deleteInterruptionEntryMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isDeleteInterruptionEntryRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteInterruptionEntry request");
+    }
+    return mutationResponse(await deleteInterruptionEntry(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/entries/bulk-move-to-day") {
     const body = await readBoundedJson(request);

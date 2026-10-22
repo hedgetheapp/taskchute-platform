@@ -66,6 +66,20 @@ class TodayJsonParserTest {
     }
 
     @Test
+    fun interruptionLineageAndFutureRoutineIdentityAreOptionalAndParsed() {
+        val marked = TodayJsonParser.parse(SAMPLE.replace(
+            "\"routine\":null",
+            "\"continuation_parent_entry_id\":\"root-entry\",\"future_routine_definition_id\":\"future-routine\",\"routine\":null",
+        ))
+        val legacy = TodayJsonParser.parse(SAMPLE)
+
+        assertEquals("root-entry", marked.sections.single().entries.single().continuationParentEntryId)
+        assertEquals("future-routine", marked.sections.single().entries.single().futureRoutineDefinitionId)
+        assertNull(legacy.sections.single().entries.single().continuationParentEntryId)
+        assertNull(legacy.sections.single().entries.single().futureRoutineDefinitionId)
+    }
+
+    @Test
     fun canonicalQuickInterruptDisplayOrderIsParsedAndRemainsOptional() {
         val projected = TodayJsonParser.parse(SAMPLE.replace(
             "\"entries\":[",

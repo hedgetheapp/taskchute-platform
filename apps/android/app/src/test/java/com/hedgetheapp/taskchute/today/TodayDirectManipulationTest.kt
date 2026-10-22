@@ -1312,6 +1312,60 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun interruptionDeleteUsesConfirmedDedicatedEndpoint() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, "{}")
+            },
+        )
+
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.DeleteInterruption("op-interruption", "entry-1", "day-1", 7)),
+        )
+        assertEquals("POST", requests.single().first)
+        assertEquals("/api/v1/entries/entry-1/delete-interruption", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"confirmed\":true"))
+        assertTrue(requests.single().third.orEmpty().contains("\"expected_placement_revision\":7"))
+    }
+
+    @Test
+    fun interruptionDeleteEligibilityIsLimitedToApprovedLifecycleClasses() {
+        assertTrue(task(LifecycleState.COMPLETED).copy(lastOutcome = TodayExecutionOutcome.INTERRUPTED).isInterruptionDeleteEligible())
+        assertTrue(task(LifecycleState.PLANNED).copy(continuationParentEntryId = "root").isInterruptionDeleteEligible())
+        assertTrue(task(LifecycleState.RUNNING).copy(quickInterruptOrigin = true).isInterruptionDeleteEligible())
+        assertFalse(task(LifecycleState.COMPLETED).copy(lastOutcome = TodayExecutionOutcome.COMPLETED).isInterruptionDeleteEligible())
+        assertFalse(task(LifecycleState.PLANNED).copy(routineDerived = true, continuationParentEntryId = "root").isInterruptionDeleteEligible())
+        assertFalse(task(LifecycleState.RUNNING).copy(futureRoutineDefinitionId = "routine").isInterruptionDeleteEligible())
+    }
+
+    @Test
+    fun interruptionDeleteControllerRequiresConfirmedEligibleEstablishedDayIntent() {
+        val repository = FakeRepository()
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val interrupted = task(LifecycleState.COMPLETED).copy(lastOutcome = TodayExecutionOutcome.INTERRUPTED)
+        controller.deleteInterruption(day(), interrupted)
+        assertTrue(await { repository.requests.size == 1 })
+        val request = repository.requests.single() as DirectManipulationRequest.DeleteInterruption
+        assertEquals("entry-1", request.entryId)
+        assertEquals("day-1", request.taskChuteDayId)
+        assertEquals(5, request.expectedPlacementRevision)
+
+        controller.clearError()
+        controller.deleteInterruption(day().copy(isCurrent = false, planningEnabled = true), interrupted)
+        controller.deleteInterruption(day(), task(LifecycleState.COMPLETED))
+        assertEquals(1, repository.requests.size)
+        controller.close()
+    }
+
+    @Test
     fun unestablishedPastTargetIsRejectedBeforeMutation() {
         val requests = mutableListOf<DirectManipulationRequest>()
         val controller = TodayDirectManipulationController(

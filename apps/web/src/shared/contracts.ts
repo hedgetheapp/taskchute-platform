@@ -412,6 +412,8 @@ export interface EntryProjection {
   quick_interrupt_target_entry_id?: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  /** Optional D-182 lineage identity used to expose eligible continuation deletion. */
+  continuation_parent_entry_id?: string | null;
   /** D-155: per-Entry local Android start reminder; absent is tolerated for old fixtures/clients. */
   start_reminder_offset_minutes?: number | null;
   /** D-155: per-Entry local Android overrun notification; absent is off. */
@@ -601,6 +603,21 @@ export interface DeleteCompletedEntryRequest {
 }
 
 export interface DeleteCompletedEntryResult {
+  entry_id: string;
+  deleted_execution_ids: string[];
+  taskchute_day_id: string;
+  placement_revision: number;
+}
+
+export interface DeleteInterruptionEntryRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_id: string;
+  expected_placement_revision: number;
+  confirmed: true;
+}
+
+export interface DeleteInterruptionEntryResult {
   entry_id: string;
   deleted_execution_ids: string[];
   taskchute_day_id: string;

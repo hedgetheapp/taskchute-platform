@@ -117,6 +117,8 @@ internal object TodayJsonParser {
             lastOutcome = lastOutcome,
             quickInterruptOrigin = value.nullableBooleanField("quick_interrupt_origin") ?: false,
             quickInterruptTargetEntryId = value.nullableStringField("quick_interrupt_target_entry_id"),
+            continuationParentEntryId = value.nullableStringField("continuation_parent_entry_id"),
+            futureRoutineDefinitionId = value.nullableStringField("future_routine_definition_id"),
         )
     }
 

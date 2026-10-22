@@ -37,8 +37,19 @@ data class TodayTask(
     val lastOutcome: TodayExecutionOutcome? = null,
     val quickInterruptOrigin: Boolean = false,
     val quickInterruptTargetEntryId: String? = null,
+    val continuationParentEntryId: String? = null,
+    val futureRoutineDefinitionId: String? = null,
 )
 
+fun TodayTask.isInterruptionDeleteEligible(): Boolean {
+    if (routineDerived || futureRoutineDefinitionId != null) return false
+    return when (lifecycleState) {
+        LifecycleState.PLANNED -> continuationParentEntryId != null
+        LifecycleState.RUNNING -> continuationParentEntryId != null || quickInterruptOrigin
+        LifecycleState.COMPLETED -> continuationParentEntryId != null
+            || quickInterruptOrigin || lastOutcome == TodayExecutionOutcome.INTERRUPTED
+    }
+}
 enum class TodayExecutionOutcome {
     COMPLETED,
     INTERRUPTED,

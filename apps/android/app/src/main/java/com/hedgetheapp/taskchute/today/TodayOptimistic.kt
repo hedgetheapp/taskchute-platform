@@ -227,6 +227,7 @@ internal fun applyOptimisticDirectManipulation(
     is DirectManipulationRequest.MoveToDay -> request.entryIds.fold(day) { current, id -> current.removeEntry(id) }
     is DirectManipulationRequest.Delete -> request.entryIds.fold(day) { current, id -> current.removeEntry(id) }
     is DirectManipulationRequest.HardDelete -> day.removeEntry(request.entryId)
+    is DirectManipulationRequest.DeleteInterruption -> day.removeEntry(request.entryId)
 }
 
 internal fun previewOptimisticPlacement(day: TodayDay, entryId: String, targetSectionId: String?, target: PlacementTarget?): TodayDay =

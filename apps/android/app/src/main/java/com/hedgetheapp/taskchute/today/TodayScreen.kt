@@ -474,13 +474,22 @@ fun TodayScreen(
         AlertDialog(
             onDismissRequest = { deleteEntryIds = null },
             title = { Text("タスクを削除") },
-            text = { Text("選択した${entryIds.size}件の予定を削除しますか？") },
+            text = {
+                val target = day?.allEntries?.singleOrNull { it.id in entryIds }
+                if (entryIds.size == 1 && target?.isInterruptionDeleteEligible() == true) {
+                    Text("このタスクと実行履歴を完全に削除します。この操作は取り消せません。")
+                } else {
+                    Text("選択した${entryIds.size}件の予定を削除しますか？")
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     deleteEntryIds = null
                     day?.let { currentDay ->
                         val task = currentDay.allEntries.singleOrNull { it.id in entryIds }
-                        if (task != null && task.lifecycleState != LifecycleState.PLANNED) {
+                        if (entryIds.size == 1 && task?.isInterruptionDeleteEligible() == true) {
+                            directManipulationController?.deleteInterruption(currentDay, task)
+                        } else if (task != null && task.lifecycleState != LifecycleState.PLANNED) {
                             directManipulationController?.deleteLifecycle(currentDay, task)
                         } else {
                             directManipulationController?.delete(currentDay, entryIds)

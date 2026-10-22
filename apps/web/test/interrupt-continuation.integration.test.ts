@@ -86,7 +86,8 @@ function failingMutationBatch(db: D1Database): D1Database {
     get(target, property) {
       if (property === "batch") return async (statements: D1PreparedStatement[]) => {
         batches += 1;
-        if (batches === 2) throw new Error("injected unknown D1 failure");
+        // InterruptEntry now batches the additional lineage read before its mutation batch.
+        if (batches === 3) throw new Error("injected unknown D1 failure");
         return target.batch(statements);
       };
       const value = Reflect.get(target, property, target) as unknown;

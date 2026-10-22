@@ -67,6 +67,7 @@ interface EntryRow {
   project_title: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  continuation_parent_entry_id: string | null;
   start_reminder_offset_minutes: number | null;
   notify_on_estimate_overrun: number;
   live_mode_id: string | null;
@@ -164,6 +165,8 @@ function toEntryRow(value: unknown): EntryRow {
     project_id: projectId,
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
+    continuation_parent_entry_id: row.continuation_parent_entry_id === null
+      ? null : requiredString(row, "continuation_parent_entry_id"),
     planned_start_minute: row.planned_start_minute === null ? null : requiredNumber(row, "planned_start_minute"),
     start_reminder_offset_minutes: row.start_reminder_offset_minutes === null ? null : requiredNumber(row, "start_reminder_offset_minutes"),
     notify_on_estimate_overrun: requiredNumber(row, "notify_on_estimate_overrun"),
@@ -391,6 +394,7 @@ async function loadEstablishedProjection(
       .prepare(
         `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
                 e.start_reminder_offset_minutes, e.notify_on_estimate_overrun,
+                e.continuation_parent_entry_id,
                 e.routine_occurrence_id, ro.routine_definition_id,
                 c.routine_definition_id AS future_routine_definition_id,
                 rd.end_logical_date AS routine_end_logical_date,
@@ -513,6 +517,7 @@ async function loadEstablishedProjection(
         ? {} : { quick_interrupt_target_entry_id: row.quick_interrupt_target_entry_id }),
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      continuation_parent_entry_id: row.continuation_parent_entry_id,
       start_reminder_offset_minutes: row.start_reminder_offset_minutes,
       notify_on_estimate_overrun: row.notify_on_estimate_overrun === 1,
       ...(row.future_routine_definition_id === null ? {} : { future_routine_definition_id: row.future_routine_definition_id }),

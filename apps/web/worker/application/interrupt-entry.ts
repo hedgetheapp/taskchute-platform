@@ -4,6 +4,7 @@ import { resolveLogicalMinuteAtInstant, resolveTaskChuteDay } from "../domain/ta
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
 import { HttpError } from "./errors";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
+import { readContinuationChainEstimate } from "./continuation-lineage";
 
 interface InterruptEntryRow {
   entry_id: string;
@@ -200,20 +201,13 @@ export async function interruptEntry(
     ? maxPosition + 2
     : Math.max(maxSameMinutePosition + 1, maxPosition + 1);
 
-  const chainId = source.continuation_chain_id || source.entry_id;
-  const chainEstimate = await db.prepare(`SELECT
-      (SELECT e0.estimate_seconds FROM entries e0
-        WHERE e0.app_user_id = ? AND e0.continuation_chain_id = ? AND e0.continuation_parent_entry_id IS NULL
-        ORDER BY e0.created_at, e0.id LIMIT 1) AS baseline_estimate_seconds,
-      COALESCE(SUM(CASE WHEN x.ended_at IS NULL
-        THEN unixepoch(?) - unixepoch(x.started_at)
-        ELSE unixepoch(x.ended_at) - unixepoch(x.started_at) END), 0) AS cumulative_actual_seconds
-    FROM entries e LEFT JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
-    WHERE e.app_user_id = ? AND e.continuation_chain_id = ?`)
-    .bind(appUserId, chainId, nowInstant, appUserId, chainId).first<{ baseline_estimate_seconds: number | null; cumulative_actual_seconds: number }>();
-  const remainingEstimate = chainEstimate?.baseline_estimate_seconds === null || chainEstimate?.baseline_estimate_seconds === undefined
-    ? null
-    : chainEstimate.baseline_estimate_seconds - Math.max(0, Math.floor(chainEstimate.cumulative_actual_seconds));
+  const chainId = source.continuation_chain_id;
+  const chainEstimate = await readContinuationChainEstimate(db, appUserId, chainId, nowInstant);
+  if (!chainEstimate.valid) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "The continuation root lineage is unavailable or inconsistent");
+  }
+  const remainingEstimate = chainEstimate.baselineEstimateSeconds === null
+    ? null : chainEstimate.baselineEstimateSeconds - Math.max(0, Math.floor(chainEstimate.cumulativeActualSeconds));
   const continuationEstimate = remainingEstimate !== null && remainingEstimate > 0 ? remainingEstimate : null;
   const targetSectionId = context.section_id;
   const result: InterruptEntryResult = {

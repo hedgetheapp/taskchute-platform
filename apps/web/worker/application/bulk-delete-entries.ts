@@ -36,6 +36,7 @@ interface TargetRow {
   continuation_chain_id: string | null;
   continuation_parent_entry_id: string | null;
   chain_entry_count: number;
+  lineage_count: number;
   execution_count: number;
   suppression_count: number;
   position: number;
@@ -67,6 +68,7 @@ function targetSnapshot(rows: TargetRow[]): string {
     continuation_chain_id: row.continuation_chain_id,
     continuation_parent_entry_id: row.continuation_parent_entry_id,
     chain_entry_count: row.chain_entry_count,
+    lineage_count: row.lineage_count,
     position: row.position,
     execution_count: row.execution_count,
     suppression_count: row.suppression_count,
@@ -118,6 +120,8 @@ export async function bulkDeleteEntries(
       ro.id AS routine_record_id,
       (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
         AND chain_entry.continuation_chain_id = e.continuation_chain_id) AS chain_entry_count,
+      (SELECT COUNT(*) FROM continuation_lineage_tombstones lineage WHERE lineage.app_user_id = e.app_user_id
+        AND lineage.continuation_chain_id = e.continuation_chain_id) AS lineage_count,
       (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS execution_count,
       (SELECT COUNT(*) FROM routine_occurrence_suppressions s
         WHERE s.app_user_id = e.app_user_id AND s.routine_occurrence_id = e.routine_occurrence_id) AS suppression_count
@@ -129,6 +133,12 @@ export async function bulkDeleteEntries(
   const targets = targetResult.results;
   if (targets.length !== request.entry_ids.length) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Every selected Entry must belong to this TaskChuteDay");
+  }
+  if (targets.some((target) => target.routine_occurrence_id === null
+    && (target.continuation_chain_id !== target.id || target.continuation_parent_entry_id !== null
+      || target.chain_entry_count !== 1 || target.lineage_count !== 0))) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "A continuation-chain Entry requires the guarded single-Entry interruption delete");
   }
   if (targets.some((target) => target.lifecycle_state !== "planned")) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only planned Entries can be bulk deleted");
@@ -177,6 +187,9 @@ export async function bulkDeleteEntries(
               OR CAST(json_extract(snapshot.value, '$.chain_entry_count') AS INTEGER) !=
                 (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
                   AND chain_entry.continuation_chain_id = e.continuation_chain_id)
+              OR CAST(json_extract(snapshot.value, '$.lineage_count') AS INTEGER) !=
+                (SELECT COUNT(*) FROM continuation_lineage_tombstones lineage WHERE lineage.app_user_id = e.app_user_id
+                  AND lineage.continuation_chain_id = e.continuation_chain_id)
               OR e.position != CAST(json_extract(snapshot.value, '$.position') AS INTEGER)
               OR (CAST(json_extract(snapshot.value, '$.execution_count') AS INTEGER) !=
                 (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id))

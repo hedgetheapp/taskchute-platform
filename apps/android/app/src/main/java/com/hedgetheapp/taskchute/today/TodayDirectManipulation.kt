@@ -75,6 +75,13 @@ sealed interface DirectManipulationRequest {
         val taskChuteDayId: String,
         val expectedPlacementRevision: Int,
     ) : DirectManipulationRequest
+
+    data class DeleteInterruption(
+        override val operationId: String,
+        val entryId: String,
+        val taskChuteDayId: String,
+        val expectedPlacementRevision: Int,
+    ) : DirectManipulationRequest
 }
 
 sealed interface DirectManipulationResult {
@@ -161,6 +168,10 @@ class TodayDirectManipulationHttpRepository(
             is DirectManipulationRequest.HardDelete -> {
                 path = "/api/v1/entries/${JsonEncoding.pathSegment(request.entryId)}/delete-completed"
                 body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","expected_placement_revision":${request.expectedPlacementRevision}}"""
+            }
+            is DirectManipulationRequest.DeleteInterruption -> {
+                path = "/api/v1/entries/${JsonEncoding.pathSegment(request.entryId)}/delete-interruption"
+                body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","expected_placement_revision":${request.expectedPlacementRevision},"confirmed":true}"""
             }
         }
         return execute("POST", path, body)
@@ -340,6 +351,19 @@ class TodayDirectManipulationController(
         )
     }
 
+    fun deleteInterruption(day: TodayDay, task: TodayTask, successMessage: String? = null) {
+        val dayId = day.taskChuteDayId ?: return
+        val establishedDay = day.isCurrent || !day.planningEnabled
+        if (!establishedDay || !task.isInterruptionDeleteEligible()
+            || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null) return
+        dispatch(
+            setOf(task.id),
+            DirectManipulationRequest.DeleteInterruption(UUIDv7.next(), task.id, dayId, day.placementRevision),
+            successMessage,
+            day.logicalDate,
+        )
+    }
+
     fun retryUnresolved() {
         val request = state.unresolvedRequest ?: return
         dispatch(state.pendingEntryIds.ifEmpty { affectedEntries(request) }, request)
@@ -440,6 +464,7 @@ class TodayDirectManipulationController(
         is DirectManipulationRequest.MoveToDay -> request.entryIds.toSet()
         is DirectManipulationRequest.Delete -> request.entryIds.toSet()
         is DirectManipulationRequest.HardDelete -> setOf(request.entryId)
+        is DirectManipulationRequest.DeleteInterruption -> setOf(request.entryId)
     }
 
     private fun logDebugResult(
@@ -455,6 +480,7 @@ class TodayDirectManipulationController(
             is DirectManipulationRequest.MoveToDay -> "moveToDay expectedRevision=${request.expectedSourcePlacementRevision}"
             is DirectManipulationRequest.Delete -> "delete expectedRevision=${request.expectedPlacementRevision}"
             is DirectManipulationRequest.HardDelete -> "hardDelete expectedRevision=${request.expectedPlacementRevision}"
+            is DirectManipulationRequest.DeleteInterruption -> "deleteInterruption expectedRevision=${request.expectedPlacementRevision}"
         }
         val resultDetails = when (result) {
             is DirectManipulationResult.Failure ->

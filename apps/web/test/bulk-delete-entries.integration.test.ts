@@ -138,6 +138,8 @@ describe.sequential("BulkDeleteEntries", () => {
     const childTaskId = uuidv7();
     const childEntryId = uuidv7();
     await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.ordinaryEntryId, fixture.userId, fixture.ordinaryEntryId),
       env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Continuation child', ?)")
         .bind(childTaskId, fixture.userId, now),
       env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position,
@@ -145,8 +147,6 @@ describe.sequential("BulkDeleteEntries", () => {
         VALUES (?, ?, ?, ?, ?, 6, 'planned', ?, ?, ?)`)
         .bind(childEntryId, fixture.userId, childTaskId, fixture.dayId, fixture.sectionId, now,
           fixture.ordinaryEntryId, fixture.ordinaryEntryId),
-      env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
-        .bind(fixture.ordinaryEntryId, fixture.userId, fixture.ordinaryEntryId),
     ]);
     const before = await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
       .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all();
@@ -155,6 +155,34 @@ describe.sequential("BulkDeleteEntries", () => {
       requestFor(fixture, [fixture.ordinaryEntryId]), now)).rejects.toMatchObject({ code: "resource_conflict" });
     expect((await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
       .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all()).results).toEqual(before.results);
+  });
+
+  it("rejects legacy current-Day bulk deletion for a continuation chain member", async () => {
+    const fixture = await seed();
+    const childTaskId = uuidv7();
+    const childEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.ordinaryEntryId, fixture.userId, fixture.ordinaryEntryId),
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Continuation child', ?)")
+        .bind(childTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position,
+        lifecycle_state, created_at, continuation_chain_id, continuation_parent_entry_id)
+        VALUES (?, ?, ?, ?, ?, 6, 'planned', ?, ?, ?)`)
+        .bind(childEntryId, fixture.userId, childTaskId, fixture.dayId, fixture.sectionId, now,
+          fixture.ordinaryEntryId, fixture.ordinaryEntryId),
+    ]);
+    const before = await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
+      .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all();
+
+    await expect(bulkDeleteEntries(env.APP_DB, fixture.userId,
+      requestFor(fixture, [fixture.ordinaryEntryId]), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(bulkDeleteEntries(env.APP_DB, fixture.userId,
+      requestFor(fixture, [childEntryId]), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect((await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
+      .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all()).results).toEqual(before.results);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).first<number>("placement_revision")).toBe(0);
   });
 
   it("removes ordinary Entries and skips Routine Entries atomically, preserving identity and replaying once", async () => {

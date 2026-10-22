@@ -3288,6 +3288,38 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun interruptionHardDeleteRequiresIrreversibleConfirmationBeforeDedicatedRequest() {
+        val directRepository = FakeDirectManipulationRepository()
+        val interrupted = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            id = "interrupted-entry", title = "Interrupted task", lastOutcome = TodayExecutionOutcome.INTERRUPTED,
+        )
+        val initialDay = dayWith(LifecycleState.COMPLETED).copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(interrupted))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Interrupted task").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.onNodeWithText("このタスクと実行履歴を完全に削除します。この操作は取り消せません。").assertIsDisplayed()
+        composeRule.onNodeWithText("キャンセル", substring = false).performClick()
+        assertEquals("Cancel must not dispatch a mutation", 0, directRepository.deleteCalls.get())
+
+        composeRule.onNodeWithText("Interrupted task").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.onNodeWithText("このタスクと実行履歴を完全に削除します。この操作は取り消せません。").assertIsDisplayed()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.waitUntil(5_000) { directRepository.deleteCalls.get() == 1 }
+
+        val request = directRepository.lastRequest as DirectManipulationRequest.DeleteInterruption
+        assertEquals("interrupted-entry", request.entryId)
+        assertEquals("day-1", request.taskChuteDayId)
+        assertEquals(5, request.expectedPlacementRevision)
+    }
+
+    @Test
     fun pastRunningAndCompletedRowsOpenTheirExistingHistoricalEditors() {
         val running = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
             id = "past-running", title = "Past Running", taskId = "task-past-running",
@@ -3652,6 +3684,7 @@ class TodayScreenInstrumentedTest {
                 is DirectManipulationRequest.MoveToDay -> bulkMoveCalls.incrementAndGet()
                 is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
                 is DirectManipulationRequest.HardDelete -> deleteCalls.incrementAndGet()
+                is DirectManipulationRequest.DeleteInterruption -> deleteCalls.incrementAndGet()
             }
             onRequestExecuted?.invoke(request)
             return scriptedResults.removeFirstOrNull() ?: result
