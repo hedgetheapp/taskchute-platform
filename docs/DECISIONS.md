@@ -1,6 +1,6 @@
 ## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
 
-Status: **Approved / implemented `ee9b6df3` / focused and exact-SHA CI PASS / nonprod BLOCKED before writes by legacy orphan / Product Verified NO / Released NO** (Product Owner 2026-10-21; Option A and minimal invisible lineage).
+Status: **Approved / implemented `ee9b6df3` / focused and exact-SHA CI PASS / nonprod Option C APPROVED 2026-10-23 / backup + rehearsal + migration/deploy/QA NOT_RUN / Product Verified NO / Released NO** (Product Owner 2026-10-21; Option A and minimal invisible lineage).
 
 Canonical Decision: `docs/decisions/D-182_INTERRUPTION_HARD_DELETE_PRESERVED_LINEAGE_V01.md`.
 
