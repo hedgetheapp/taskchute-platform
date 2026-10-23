@@ -8,13 +8,14 @@ import { quickInterruptEntry } from "../worker/application/quick-interrupt-entry
 import { readContinuationChainEstimate } from "../worker/application/continuation-lineage";
 import { loadReviewDateMetrics, reviewDateMetricRange } from "../worker/application/review-date-metrics";
 import { updateTaskMetadata } from "../worker/application/task-metadata";
+import worker from "../worker";
 import { uuidv7 } from "../src/shared/uuidv7";
 import type { QuickInterruptEntryRequest } from "../src/shared/contracts";
 
 const now = "2026-08-22T10:15:30.000Z";
 
-async function fixture() {
-  const userId = uuidv7();
+async function fixture(existingUserId?: string) {
+  const userId = existingUserId ?? uuidv7();
   const dayId = uuidv7();
   const morningId = uuidv7();
   const eveningId = uuidv7();
@@ -26,10 +27,14 @@ async function fixture() {
   const neighborEntryId = uuidv7();
   const sourceExecutionId = uuidv7();
   await env.APP_DB.batch([
-    env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(userId, now),
-    env.APP_DB.prepare("INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at) VALUES (?, 'UTC', 0, ?)").bind(userId, now),
-    env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Morning', 0, ?)").bind(morningId, userId, now),
-    env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Evening', 1, ?)").bind(eveningId, userId, now),
+    ...(existingUserId ? [] : [
+      env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(userId, now),
+      env.APP_DB.prepare("INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at) VALUES (?, 'UTC', 0, ?)").bind(userId, now),
+    ]),
+    env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Morning', ?, ?)")
+      .bind(morningId, userId, existingUserId ? 1 : 0, now),
+    env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Evening', ?, ?)")
+      .bind(eveningId, userId, existingUserId ? 2 : 1, now),
     env.APP_DB.prepare("INSERT INTO section_configuration_versions (id, app_user_id, day_boundary_minutes, created_at) VALUES (?, ?, 0, ?)").bind(configId, userId, now),
     env.APP_DB.prepare(`INSERT INTO section_configuration_items
       (app_user_id, configuration_version_id, section_id, title, logical_start_minute, logical_end_minute, configuration_order)
@@ -83,6 +88,87 @@ function interruptionDeleteRequest(ids: Awaited<ReturnType<typeof fixture>>, ent
     operation_id: uuidv7(), taskchute_day_id: ids.dayId, entry_id: entryId,
     expected_placement_revision: revision, confirmed: true as const,
   };
+}
+
+class AuthenticatedWorkerSession {
+  private readonly cookies = new Map<string, string>();
+
+  async post(path: string, body: object, headers: HeadersInit = {}): Promise<Response> {
+    const requestHeaders = new Headers({ origin: "https://taskchute.test", "content-type": "application/json", ...Object.fromEntries(new Headers(headers)) });
+    if (this.cookies.size > 0) requestHeaders.set("cookie", Array.from(this.cookies.entries(), ([name, value]) => `${name}=${value}`).join("; "));
+    const response = await worker.fetch(new Request(`https://taskchute.test${path}`, {
+      method: "POST", headers: requestHeaders, body: JSON.stringify(body),
+    }), env as Env);
+    for (const cookie of response.headers.getSetCookie()) {
+      const pair = cookie.split(";", 1)[0];
+      const separator = pair.indexOf("=");
+      const name = pair.slice(0, separator);
+      const value = pair.slice(separator + 1);
+      if (value) this.cookies.set(name, value);
+      else this.cookies.delete(name);
+    }
+    return response;
+  }
+}
+
+async function authenticatedFixtureOwner(): Promise<{ userId: string; session: AuthenticatedWorkerSession }> {
+  const session = new AuthenticatedWorkerSession();
+  const email = `d182-${uuidv7()}@example.test`;
+  const password = "fixture-password-1234";
+  const bootstrap = await session.post("/api/internal/bootstrap", {
+    email, password, name: "D-182 runtime fixture", timezone: "UTC", day_boundary_minutes: 0, sections: ["Fixture"],
+  }, { "x-taskchute-bootstrap-token": "fixture-only-bootstrap-token" });
+  if (!bootstrap.ok) throw new Error("D-182 test fixture bootstrap failed");
+  const { app_user_id: userId } = await bootstrap.json() as { app_user_id: string };
+  const signIn = await session.post("/api/auth/sign-in/email", { email, password });
+  if (!signIn.ok) throw new Error("D-182 test fixture sign-in failed");
+  return { userId, session };
+}
+
+async function makeMissingRootChain(
+  ids: Awaited<ReturnType<typeof fixture>>,
+  lifecycle: "running" | "completed" = "running",
+): Promise<string> {
+  const missingRootId = uuidv7();
+  await env.APP_DB.prepare(`UPDATE entries
+    SET lifecycle_state = ?, continuation_chain_id = ?, continuation_parent_entry_id = ?
+    WHERE app_user_id = ? AND id = ?`)
+    .bind(lifecycle, missingRootId, missingRootId, ids.userId, ids.sourceEntryId).run();
+  if (lifecycle === "completed") {
+    await env.APP_DB.prepare(`UPDATE executions SET ended_at = ?, terminal_outcome = 'interrupted'
+      WHERE app_user_id = ? AND id = ?`)
+      .bind("2026-08-22T10:00:00.000Z", ids.userId, ids.sourceExecutionId).run();
+  }
+  return missingRootId;
+}
+
+function stableDbRow(value: Record<string, unknown>): string {
+  return JSON.stringify(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+async function ownerDomainSnapshot(appUserId: string): Promise<Record<string, string[]>> {
+  const tableResult = await env.APP_DB.prepare(`SELECT name, sql FROM sqlite_master
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+    .all<{ name: string; sql: string | null }>();
+  const snapshot: Record<string, string[]> = {};
+  for (const { name, sql } of tableResult.results) {
+    if (name === "operations") continue;
+    if (!/\bapp_user_id\b/i.test(sql ?? "")) continue;
+    const quotedName = `"${name.replaceAll('"', '""')}"`;
+    const rows = await env.APP_DB.prepare(`SELECT * FROM ${quotedName} WHERE app_user_id = ?`)
+      .bind(appUserId).all<Record<string, unknown>>();
+    snapshot[name] = rows.results.map(stableDbRow).sort();
+  }
+  const account = await env.APP_DB.prepare("SELECT * FROM app_users WHERE id = ?")
+    .bind(appUserId).first<Record<string, unknown>>();
+  snapshot.app_users = account ? [stableDbRow(account)] : [];
+  return snapshot;
+}
+
+async function ownerOperationsSnapshot(appUserId: string): Promise<string[]> {
+  const rows = await env.APP_DB.prepare("SELECT * FROM operations WHERE app_user_id = ?")
+    .bind(appUserId).all<Record<string, unknown>>();
+  return rows.results.map(stableDbRow).sort();
 }
 
 describe.sequential("D-181 QuickInterruptEntry", () => {
@@ -306,6 +392,185 @@ describe.sequential("D-181 QuickInterruptEntry", () => {
 });
 
 describe.sequential("D-182 interruption hard delete", () => {
+  it("persists and replays the orphan rejection through the authenticated Worker route", async () => {
+    const owner = await authenticatedFixtureOwner();
+    const ids = await fixture(owner.userId);
+    await makeMissingRootChain(ids, "completed");
+    const request = interruptionDeleteRequest(ids, ids.sourceEntryId, 0);
+    const domainBefore = await ownerDomainSnapshot(ids.userId);
+    const operationsBefore = await ownerOperationsSnapshot(ids.userId);
+    const path = `/api/v1/entries/${ids.sourceEntryId}/delete-interruption`;
+
+    const first = await owner.session.post(path, request);
+    const firstBody = await first.json() as { error: { code: string } };
+    expect(first.status).toBe(409);
+    expect(firstBody.error.code).toBe("resource_conflict");
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(1);
+    expect((await ownerOperationsSnapshot(ids.userId)).filter((row) => !row.includes(request.operation_id)))
+      .toEqual(operationsBefore);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+
+    const replay = await owner.session.post(path, request);
+    expect(replay.status).toBe(first.status);
+    expect(await replay.json()).toEqual(firstBody);
+    const misuse = await owner.session.post(path, { ...request, expected_placement_revision: 1 });
+    expect(misuse.status).toBe(409);
+    expect(await misuse.json()).toMatchObject({ error: { code: "operation_id_misuse" } });
+    const malformed = await owner.session.post(path, { ...request, operation_id: uuidv7(), extra: true });
+    expect(malformed.status).toBe(400);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(1);
+    expect((await ownerOperationsSnapshot(ids.userId)).filter((row) => !row.includes(request.operation_id)))
+      .toEqual(operationsBefore);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+  });
+
+  it("records one owner-scoped orphan rejection, replays it exactly, and rejects operation ID misuse without Domain writes", async () => {
+    const ids = await fixture();
+    await makeMissingRootChain(ids, "completed");
+    const priorOperationId = uuidv7();
+    await env.APP_DB.prepare(`INSERT INTO operations
+      (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
+       outcome_kind, result_json, created_at)
+      VALUES (?, ?, 'CompleteEntry', 1, 'prior-fingerprint', 'success', '{}', ?)`)
+      .bind(ids.userId, priorOperationId, now).run();
+
+    const request = interruptionDeleteRequest(ids, ids.sourceEntryId, 0);
+    const domainBefore = await ownerDomainSnapshot(ids.userId);
+    const operationsBefore = await ownerOperationsSnapshot(ids.userId);
+    await expect(deleteInterruptionEntry(env.APP_DB, ids.userId, request, now))
+      .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
+
+    const rejection = await env.APP_DB.prepare(`SELECT app_user_id, operation_id, command_type,
+      request_fingerprint_version, request_fingerprint, outcome_kind, result_json
+      FROM operations WHERE app_user_id = ? AND operation_id = ?`)
+      .bind(ids.userId, request.operation_id).first<Record<string, unknown>>();
+    expect(rejection).toMatchObject({
+      app_user_id: ids.userId, operation_id: request.operation_id, command_type: "DeleteInterruptionEntry",
+      request_fingerprint_version: 1, outcome_kind: "domain_rejection",
+      result_json: JSON.stringify({ code: "resource_conflict", message: "The interruption chain has missing or inconsistent ancestry" }),
+    });
+    expect(typeof rejection?.request_fingerprint).toBe("string");
+    expect((await ownerOperationsSnapshot(ids.userId)).filter((row) => !row.includes(request.operation_id)))
+      .toEqual(operationsBefore);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+
+    await expect(deleteInterruptionEntry(env.APP_DB, ids.userId, request, now))
+      .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(1);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+
+    await expect(deleteInterruptionEntry(env.APP_DB, ids.userId,
+      { ...request, expected_placement_revision: 1 }, now))
+      .rejects.toMatchObject({ status: 409, code: "operation_id_misuse" });
+    const wrongCommand = { ...quickRequest(ids), operation_id: request.operation_id };
+    await expect(quickInterruptEntry(env.APP_DB, ids.userId, wrongCommand, now))
+      .rejects.toMatchObject({ status: 409, code: "operation_id_misuse" });
+    expect((await ownerOperationsSnapshot(ids.userId)).filter((row) => !row.includes(request.operation_id)))
+      .toEqual(operationsBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(1);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+  });
+
+  it("rejects normal and Quick Interrupt on a missing-root chain without changing Domain state", async () => {
+    const normalIds = await fixture();
+    await makeMissingRootChain(normalIds);
+    const normalRequest = {
+      operation_id: uuidv7(), taskchute_day_id: normalIds.dayId, source_entry_id: normalIds.sourceEntryId,
+      active_execution_id: normalIds.sourceExecutionId, target_entry_id: normalIds.neighborEntryId,
+      target_execution_id: uuidv7(), continuation_entry_id: uuidv7(), expected_placement_revision: 0,
+    };
+    const normalDomainBefore = await ownerDomainSnapshot(normalIds.userId);
+    const normalOperationsBefore = await ownerOperationsSnapshot(normalIds.userId);
+    await expect(interruptEntry(env.APP_DB, normalIds.userId, normalRequest, now))
+      .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
+    expect((await ownerOperationsSnapshot(normalIds.userId)).filter((row) => !row.includes(normalRequest.operation_id)))
+      .toEqual(normalOperationsBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(normalIds.userId, normalRequest.operation_id).first<number>("count")).toBe(1);
+    expect(await ownerDomainSnapshot(normalIds.userId)).toEqual(normalDomainBefore);
+
+    const quickIds = await fixture();
+    await makeMissingRootChain(quickIds);
+    const quick = quickRequest(quickIds);
+    const quickDomainBefore = await ownerDomainSnapshot(quickIds.userId);
+    const quickOperationsBefore = await ownerOperationsSnapshot(quickIds.userId);
+    await expect(quickInterruptEntry(env.APP_DB, quickIds.userId, quick, now))
+      .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
+    expect((await ownerOperationsSnapshot(quickIds.userId)).filter((row) => !row.includes(quick.operation_id)))
+      .toEqual(quickOperationsBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(quickIds.userId, quick.operation_id).first<number>("count")).toBe(1);
+    expect(await ownerDomainSnapshot(quickIds.userId)).toEqual(quickDomainBefore);
+  });
+
+  it("converges concurrent orphan rejections to one immutable ledger row", async () => {
+    const ids = await fixture();
+    await makeMissingRootChain(ids, "completed");
+    const request = interruptionDeleteRequest(ids, ids.sourceEntryId, 0);
+    const domainBefore = await ownerDomainSnapshot(ids.userId);
+    const [left, right] = await Promise.all([
+      deleteInterruptionEntry(env.APP_DB, ids.userId, request, now).then(() => null, (error: unknown) => error),
+      deleteInterruptionEntry(env.APP_DB, ids.userId, request, now).then(() => null, (error: unknown) => error),
+    ]);
+    expect(left).toMatchObject({ status: 409, code: "resource_conflict" });
+    expect(right).toMatchObject({ status: 409, code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(1);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+  });
+
+  it("keeps owner isolation and rejects malformed and unauthenticated requests without protected writes", async () => {
+    const ids = await fixture();
+    await makeMissingRootChain(ids, "completed");
+    const request = interruptionDeleteRequest(ids, ids.sourceEntryId, 0);
+    const otherUserId = uuidv7();
+    await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUserId, now).run();
+    const protectedDomainBefore = await ownerDomainSnapshot(ids.userId);
+    const protectedOperationsBefore = await ownerOperationsSnapshot(ids.userId);
+
+    await expect(deleteInterruptionEntry(env.APP_DB, otherUserId, request, now))
+      .rejects.toMatchObject({ status: 404, code: "resource_not_found" });
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(protectedDomainBefore);
+    expect(await ownerOperationsSnapshot(ids.userId)).toEqual(protectedOperationsBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT app_user_id, outcome_kind FROM operations WHERE operation_id = ?")
+      .bind(request.operation_id).first()).toEqual({ app_user_id: otherUserId, outcome_kind: "domain_rejection" });
+
+    const unauthenticatedOperationId = uuidv7();
+    const unauthenticated = await worker.fetch(new Request(
+      `https://taskchute.test/api/v1/entries/${ids.sourceEntryId}/delete-interruption`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...request, operation_id: unauthenticatedOperationId }),
+      }), env as Env);
+    expect(unauthenticated.status).toBe(401);
+    const malformedOperationId = uuidv7();
+    expect(isDeleteInterruptionEntryRequest({ ...request, operation_id: malformedOperationId, extra: true })).toBe(false);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation_id IN (?, ?)")
+      .bind(unauthenticatedOperationId, malformedOperationId).first<number>("count")).toBe(0);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(protectedDomainBefore);
+    expect(await ownerOperationsSnapshot(ids.userId)).toEqual(protectedOperationsBefore);
+  });
+
+  it("reports an ambiguous infrastructure failure when the rejection insert is aborted, without Domain writes", async () => {
+    const ids = await fixture();
+    await makeMissingRootChain(ids, "completed");
+    const request = interruptionDeleteRequest(ids, ids.sourceEntryId, 0);
+    const domainBefore = await ownerDomainSnapshot(ids.userId);
+    await env.APP_DB.prepare(`CREATE TRIGGER d182_rejection_insert_failure BEFORE INSERT ON operations
+      WHEN NEW.operation_id = '${request.operation_id}' BEGIN SELECT RAISE(ABORT, 'injected_rejection_failure'); END`).run();
+    await expect(deleteInterruptionEntry(env.APP_DB, ids.userId, request, now))
+      .rejects.toMatchObject({ status: 503, code: "infrastructure_ambiguous" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(ids.userId, request.operation_id).first<number>("count")).toBe(0);
+    expect(await ownerDomainSnapshot(ids.userId)).toEqual(domainBefore);
+    await env.APP_DB.prepare("DROP TRIGGER d182_rejection_insert_failure").run();
+  });
+
   it("deletes an interrupted root while preserving its continuation, baseline, and unrelated Quick pair", async () => {
     const ids = await fixture();
     const quick = quickRequest(ids);
