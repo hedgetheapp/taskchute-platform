@@ -1,6 +1,6 @@
 # D-182 — Interruption-related Entry hard delete with non-visible surviving lineage v0.1
 
-**Status:** Approved / Implemented (`ee9b6df3bf0966bd645b93b9e31e6803d5cb8fff`) / Local focused and exact-SHA CI PASS / Persistent nonprod STOP before migration / Product Verified NO / Released NO
+**Status:** Approved D-182 + 2026-10-23 Option C conditional nonprod exception / Implemented (`ee9b6df3bf0966bd645b93b9e31e6803d5cb8fff`) / Local focused and exact-SHA CI PASS / Fresh dual-DB backup + disposable rehearsal + nonprod APP 0040/deploy/QA NOT_RUN / Product Verified NO / Released NO
 **Approval:** 2026-10-21, Product Owner: requested that all three interruption-related Task rows be deletable, selected **Option A (delete Entry and its actual history, not hide)**, then explicitly approved the proposed **minimal non-visible lineage metadata** approach and a scoped APP migration/nonprod-first verification.
 **Source of truth:** This Decision, `docs/DECISIONS.md`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`; code and `docs/TEST_MATRIX.md` determine implementation/verification status.
 **Basis:** D-016 (historical facts), D-028 / D-073 (interrupt / continuation / baseline estimates), D-067 / D-128 / D-174 (single-Entry corrections), D-178 (Review), D-181 (Quick / pairing), and `docs/planning/2026-10-21_D181_RESPONSIVENESS_AND_HARD_DELETE_FOLLOWUP.md`.
