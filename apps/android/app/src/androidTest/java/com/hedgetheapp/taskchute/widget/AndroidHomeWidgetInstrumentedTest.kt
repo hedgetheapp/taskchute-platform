@@ -4,12 +4,15 @@ import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.graphics.drawable.LayerDrawable
 import android.view.View
 import android.widget.Chronometer
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RemoteViews
 import android.widget.ImageView
+import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hedgetheapp.taskchute.R
@@ -22,6 +25,7 @@ import com.hedgetheapp.taskchute.today.TodaySection
 import com.hedgetheapp.taskchute.today.TodayTask
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -267,12 +271,15 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
-    fun rootFillsUnchangedLauncherAllocationAcrossLifecycleTransitionsAtNarrowWidth() {
+    fun compactSurfaceKeepsOneHeightAcrossLifecycleStatesAtNarrowWidth() {
         val baseContext = InstrumentationRegistry.getInstrumentation().targetContext
         val scenarios = listOf(
+            1.0f to 188,
             1.0f to 220,
-            1.2f to 240,
+            1.3f to 188,
+            1.3f to 240,
         )
+        val longTitle = "A very long running task title that should truncate without covering actions"
 
         scenarios.forEachIndexed { index, (fontScale, heightDp) ->
             val configuration = Configuration(baseContext.resources.configuration).apply {
@@ -280,7 +287,28 @@ class AndroidHomeWidgetInstrumentedTest {
             }
             val context = baseContext.createConfigurationContext(configuration)
             val views = listOf(
-                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalRunningState("execution")),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalRunningState("execution", title = longTitle),
+                ),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalRunningState("execution", startedAt = "2026-10-07T09:00:00Z"),
+                ),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalRunningState("execution", estimateSeconds = null),
+                ),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalRunningState("execution").copy(
+                        notice = "操作を完了できませんでした。最新の状態を表示しています。",
+                    ),
+                ),
                 AndroidHomeWidgetRenderer.optimisticViews(
                     context,
                     optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!,
@@ -289,13 +317,25 @@ class AndroidHomeWidgetInstrumentedTest {
                     context,
                     optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
                 ),
-                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = true)),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalIdleState(withNext = true, title = longTitle),
+                ),
                 AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = false)),
+                RemoteViews(context.packageName, R.layout.taskchute_home_widget).apply {
+                    setViewVisibility(R.id.home_widget_running_content, View.GONE)
+                    setViewVisibility(R.id.home_widget_idle_content, View.GONE)
+                    setViewVisibility(R.id.home_widget_status, View.VISIBLE)
+                    setTextViewText(R.id.home_widget_status, "サインインが必要です")
+                },
             )
             val widget = attachMeasured(context, views.first(), widthDp = 280, heightDp = heightDp)
             val density = context.resources.displayMetrics.density
             val expectedWidth = (280f * density).roundToInt()
             val expectedHeight = (heightDp * density).roundToInt()
+            val expectedSurfaceHeight = (188f * density).roundToInt()
+            val contentContainer = widget.root.findViewById<LinearLayout>(R.id.home_widget_surface_content)
 
             views.forEachIndexed { stateIndex, remoteViews ->
                 if (stateIndex > 0) {
@@ -304,18 +344,45 @@ class AndroidHomeWidgetInstrumentedTest {
                 }
                 assertEquals("root width at fontScale=$fontScale state=$stateIndex", expectedWidth, widget.root.width)
                 assertEquals("root height at fontScale=$fontScale state=$stateIndex", expectedHeight, widget.root.height)
+                assertEquals("content frame width at fontScale=$fontScale state=$stateIndex", expectedWidth, contentContainer.width)
+                assertEquals("content frame height at fontScale=$fontScale state=$stateIndex", expectedSurfaceHeight, contentContainer.height)
+                assertEquals("content frame must start at the top of the launcher allocation", 0, contentContainer.top)
+                val background = widget.root.background as LayerDrawable
+                val surfaceBounds = background.getDrawable(0).bounds
+                assertEquals("surface width at fontScale=$fontScale state=$stateIndex", expectedWidth, surfaceBounds.width())
+                assertEquals("surface height at fontScale=$fontScale state=$stateIndex", expectedSurfaceHeight, surfaceBounds.height())
+                assertTrue("surface must fit the launcher allocation", surfaceBounds.bottom <= widget.root.height)
+                assertVisibleContentBalanced(
+                    widget.root as ViewGroup,
+                    contentContainer,
+                    surfaceBounds,
+                    density,
+                    "fontScale=$fontScale height=$heightDp state=$stateIndex",
+                )
 
                 val runningContent = widget.root.findViewById<View>(R.id.home_widget_running_content)
                 if (runningContent.visibility == View.VISIBLE) {
                     assertTrue(
-                        "Running content must fit without clipping at fontScale=$fontScale height=$heightDp",
-                        runningContent.bottom <= widget.root.height - widget.root.paddingBottom,
+                        "Running content must fit without clipping at fontScale=$fontScale height=$heightDp state=$stateIndex",
+                        runningContent.bottom <= surfaceBounds.bottom - contentContainer.paddingBottom,
                     )
                     assertTrue(widget.root.findViewById<View>(R.id.home_widget_running_title).width > 0)
+                    val complete = widget.root.findViewById<View>(R.id.home_widget_complete_action)
+                    assertEquals((48f * density).roundToInt(), complete.width)
+                    assertEquals((48f * density).roundToInt(), complete.height)
+                    val nextBounds = Rect()
+                    (widget.root as ViewGroup).offsetDescendantRectToMyCoords(
+                        widget.root.findViewById(R.id.home_widget_running_next_row),
+                        nextBounds,
+                    )
+                    assertTrue(nextBounds.bottom <= surfaceBounds.bottom - contentContainer.paddingBottom)
                 }
 
                 val idleRow = widget.root.findViewById<View>(R.id.home_widget_idle_task_row)
                 val idleContent = widget.root.findViewById<View>(R.id.home_widget_idle_content)
+                if (idleContent.visibility == View.VISIBLE) {
+                    assertTrue("Idle content must fit within the fixed surface", idleContent.bottom <= surfaceBounds.bottom)
+                }
                 if (idleContent.visibility == View.VISIBLE && idleRow.visibility == View.VISIBLE) {
                     val title = widget.root.findViewById<View>(R.id.home_widget_idle_task_title)
                     val action = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
@@ -324,8 +391,38 @@ class AndroidHomeWidgetInstrumentedTest {
                     assertEquals((48f * density).roundToInt(), action.width)
                     assertEquals((48f * density).roundToInt(), action.height)
                 }
+
+                val status = widget.root.findViewById<View>(R.id.home_widget_status)
+                if (status.visibility == View.VISIBLE) {
+                    assertTrue("status text must fit its minimum row", status.height >= (64f * density).roundToInt())
+                    assertTrue("status must remain within the fixed surface", status.bottom <= surfaceBounds.bottom)
+                }
             }
         }
+    }
+
+    private fun assertVisibleContentBalanced(
+        root: ViewGroup,
+        contentContainer: LinearLayout,
+        surfaceBounds: Rect,
+        density: Float,
+        label: String,
+    ) {
+        val visibleChildren = (0 until contentContainer.childCount)
+            .map(contentContainer::getChildAt)
+            .filter { it.visibility == View.VISIBLE }
+        assertTrue("$label must have a visible content group", visibleChildren.isNotEmpty())
+
+        val childBounds = visibleChildren.map { child ->
+            Rect().also { root.offsetDescendantRectToMyCoords(child, it) }
+        }
+        val topGap = childBounds.minOf { it.top } - surfaceBounds.top
+        val bottomGap = surfaceBounds.bottom - childBounds.maxOf { it.bottom }
+        assertTrue("$label content must stay inside the fixed frame", topGap >= 0 && bottomGap >= 0)
+        assertTrue(
+            "$label content should be vertically balanced (top=$topGap, bottom=$bottomGap)",
+            abs(topGap - bottomGap) <= (8f * density).roundToInt(),
+        )
     }
 
     private data class MeasuredWidget(
@@ -365,10 +462,14 @@ class AndroidHomeWidgetInstrumentedTest {
         return result.get()
     }
 
-    private fun canonicalRunningState(executionId: String?): AndroidHomeWidgetState.Content {
-        val startedAt = "2026-10-07T09:50:00Z"
-        val task = widgetTask("running", LifecycleState.RUNNING, executionId)
-        val execution = executionId?.let { TodayExecution(it, task.id, startedAt, 1800) }
+    private fun canonicalRunningState(
+        executionId: String?,
+        title: String = "Running task",
+        startedAt: String = "2026-10-07T09:50:00Z",
+        estimateSeconds: Int? = 1800,
+    ): AndroidHomeWidgetState.Content {
+        val task = widgetTask("running", LifecycleState.RUNNING, executionId, title, estimateSeconds)
+        val execution = executionId?.let { TodayExecution(it, task.id, startedAt, estimateSeconds) }
         val day = widgetDay(listOf(task), execution)
         val projection = if (execution == null) {
             AndroidHomeWidgetProjection.Running(
@@ -387,8 +488,8 @@ class AndroidHomeWidgetInstrumentedTest {
         return AndroidHomeWidgetState.Content(day, projection)
     }
 
-    private fun canonicalIdleState(withNext: Boolean): AndroidHomeWidgetState.Content {
-        val tasks = if (withNext) listOf(widgetTask("next", LifecycleState.PLANNED)) else emptyList()
+    private fun canonicalIdleState(withNext: Boolean, title: String = "Next task"): AndroidHomeWidgetState.Content {
+        val tasks = if (withNext) listOf(widgetTask("next", LifecycleState.PLANNED, title = title)) else emptyList()
         val day = widgetDay(tasks, execution = null)
         val projection = projectAndroidHomeWidget(day, Instant.parse("2026-10-07T10:00:00Z")) as AndroidHomeWidgetProjection.Idle
         return AndroidHomeWidgetState.Content(day, projection)
@@ -405,13 +506,19 @@ class AndroidHomeWidgetInstrumentedTest {
         taskChuteDayId = "day-id",
     )
 
-    private fun widgetTask(id: String, state: LifecycleState, executionId: String? = null) = TodayTask(
+    private fun widgetTask(
+        id: String,
+        state: LifecycleState,
+        executionId: String? = null,
+        title: String = id.replaceFirstChar(Char::uppercase),
+        estimateSeconds: Int? = 1800,
+    ) = TodayTask(
         id = id,
-        title = id.replaceFirstChar(Char::uppercase),
+        title = title,
         lifecycleState = state,
         project = TodayProject("project", "Project"),
         mode = TodayMode("mode", "Mode"),
-        estimateSeconds = 1800,
+        estimateSeconds = estimateSeconds,
         plannedStartMinute = null,
         executionId = executionId,
         activeStartedAt = executionId?.let { "2026-10-07T09:50:00Z" },

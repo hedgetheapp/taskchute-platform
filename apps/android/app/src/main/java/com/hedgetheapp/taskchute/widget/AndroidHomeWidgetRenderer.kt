@@ -40,6 +40,7 @@ internal object AndroidHomeWidgetRenderer {
         presentation: AndroidHomeWidgetOptimisticPresentation,
     ): RemoteViews = RemoteViews(context.packageName, R.layout.taskchute_home_widget).apply {
         setViewVisibility(R.id.home_widget_notice, View.GONE)
+        setViewVisibility(R.id.home_widget_running_label, View.VISIBLE)
         setViewVisibility(R.id.home_widget_status, View.GONE)
         when (presentation) {
             is AndroidHomeWidgetOptimisticPresentation.Running -> {
@@ -130,7 +131,11 @@ internal object AndroidHomeWidgetRenderer {
         state.notice?.let { notice ->
             views.setViewVisibility(R.id.home_widget_notice, View.VISIBLE)
             views.setTextViewText(R.id.home_widget_notice, notice)
+            views.setViewVisibility(R.id.home_widget_running_label, View.GONE)
         } ?: views.setViewVisibility(R.id.home_widget_notice, View.GONE)
+        if (state.notice == null) {
+            views.setViewVisibility(R.id.home_widget_running_label, View.VISIBLE)
+        }
         views.setViewVisibility(R.id.home_widget_status, View.GONE)
 
         when (val projection = state.projection) {
