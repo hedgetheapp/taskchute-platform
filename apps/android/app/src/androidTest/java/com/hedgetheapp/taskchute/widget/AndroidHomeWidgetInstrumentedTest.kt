@@ -118,6 +118,7 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.VISIBLE, pendingComplete.visibility)
         assertFalse(pendingComplete.isEnabled)
         assertFalse(pendingComplete.hasOnClickListeners())
+        assertFalse(pendingComplete.performClick())
         assertEquals(
             context.getString(R.string.home_widget_complete_pending_action),
             pendingComplete.contentDescription,
@@ -180,16 +181,29 @@ class AndroidHomeWidgetInstrumentedTest {
     fun optimisticStartReappliedCanonicalRunningRestoresCompleteAction() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val presentation = optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!
+        val canonical = AndroidHomeWidgetRenderer.contentViews(context, 177, canonicalRunningState("execution"))
         val root = applyAndReapply(
             context,
             AndroidHomeWidgetRenderer.optimisticViews(context, presentation),
-            AndroidHomeWidgetRenderer.contentViews(context, 177, canonicalRunningState("execution")),
+            canonical,
         )
         val complete = root.findViewById<View>(R.id.home_widget_complete_action)
+        val stopIcon = root.findViewById<View>(R.id.home_widget_stop_icon)
 
         assertEquals(View.VISIBLE, complete.visibility)
+        assertTrue(complete.isEnabled)
         assertTrue(complete.hasOnClickListeners())
+        assertTrue(stopIcon.isEnabled)
         assertEquals(context.getString(R.string.home_widget_complete_action), complete.contentDescription)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            canonical.reapply(context, root)
+        }
+
+        assertEquals(View.VISIBLE, complete.visibility)
+        assertTrue(complete.isEnabled)
+        assertTrue(complete.hasOnClickListeners())
+        assertTrue(stopIcon.isEnabled)
     }
 
     @Test
@@ -324,9 +338,40 @@ class AndroidHomeWidgetInstrumentedTest {
             AndroidHomeWidgetRenderer.contentViews(context, 179, canonicalRunningState(executionId = null)),
         )
         val complete = root.findViewById<View>(R.id.home_widget_complete_action)
+        val stopIcon = root.findViewById<View>(R.id.home_widget_stop_icon)
 
         assertEquals(View.GONE, complete.visibility)
+        assertFalse(complete.isEnabled)
         assertFalse(complete.hasOnClickListeners())
+        assertFalse(complete.performClick())
+        assertFalse(stopIcon.isEnabled)
+    }
+
+    @Test
+    fun invalidCanonicalStateHidesAndDisablesPreviouslyPendingCompleteAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val invalidState = AndroidHomeWidgetState.Content(
+            day = canonicalRunningState("execution").day,
+            projection = AndroidHomeWidgetProjection.InvalidActiveState,
+        )
+        val root = applyAndReapply(
+            context,
+            AndroidHomeWidgetRenderer.optimisticViews(
+                context,
+                optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!,
+            ),
+            AndroidHomeWidgetRenderer.contentViews(context, 181, invalidState),
+        )
+        val complete = root.findViewById<View>(R.id.home_widget_complete_action)
+        val stopIcon = root.findViewById<View>(R.id.home_widget_stop_icon)
+
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.home_widget_status).visibility)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.home_widget_running_content).visibility)
+        assertEquals(View.GONE, complete.visibility)
+        assertFalse(complete.isEnabled)
+        assertFalse(complete.hasOnClickListeners())
+        assertFalse(complete.performClick())
+        assertFalse(stopIcon.isEnabled)
     }
 
     @Test

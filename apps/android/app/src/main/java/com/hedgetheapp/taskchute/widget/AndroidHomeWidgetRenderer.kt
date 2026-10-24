@@ -155,6 +155,14 @@ internal object AndroidHomeWidgetRenderer {
             setViewVisibility(R.id.home_widget_idle_content, View.GONE)
             setViewVisibility(R.id.home_widget_notice, View.GONE)
             setViewVisibility(R.id.home_widget_status, View.VISIBLE)
+            setViewVisibility(R.id.home_widget_complete_action, View.GONE)
+            setBoolean(R.id.home_widget_complete_action, "setEnabled", false)
+            setBoolean(R.id.home_widget_stop_icon, "setEnabled", false)
+            setOnClickPendingIntent(R.id.home_widget_complete_action, null)
+            setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+            setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+            setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
+            setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
             setTextViewText(R.id.home_widget_status, context.getString(messageRes))
         }
 
@@ -253,6 +261,9 @@ internal object AndroidHomeWidgetRenderer {
                 views.setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
                 views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 views.setViewVisibility(R.id.home_widget_idle_following_row, View.GONE)
+                val hasCanonicalExecution = executionId != null
+                views.setBoolean(R.id.home_widget_complete_action, "setEnabled", hasCanonicalExecution)
+                views.setBoolean(R.id.home_widget_stop_icon, "setEnabled", hasCanonicalExecution)
                 if (executionId != null) {
                     views.setViewVisibility(R.id.home_widget_complete_action, View.VISIBLE)
                     val completeIntent = AndroidHomeWidgetIntents.actionPendingIntent(
