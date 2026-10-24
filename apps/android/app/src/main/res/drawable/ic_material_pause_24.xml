@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Material Symbols Rounded Regular, FILL=0, GRAD=0. Apache-2.0. Source: https://github.com/google/material-design-icons/tree/master/symbols/android -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M280,840L440,840L440,120L280,120L280,840ZM520,120L520,840L680,840L680,120L520,120Z" />
+</vector>

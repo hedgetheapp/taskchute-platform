@@ -2363,13 +2363,18 @@ private fun TodayTaskRow(
                             contentAlignment = Alignment.Center,
                         ) {
                             if (interrupted) {
-                                Text("中断", color = TaskChuteColors.CompletedIcon, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_material_pause_24),
+                                    contentDescription = null,
+                                    tint = TaskChuteColors.CompletedIcon,
+                                    modifier = Modifier.size(17.dp).testTag("interrupted-row-pause-icon"),
+                                )
                             } else {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_material_check_24),
                                     contentDescription = null,
                                     tint = TaskChuteColors.CompletedIcon,
-                                    modifier = Modifier.size(17.dp),
+                                    modifier = Modifier.size(17.dp).testTag("completed-row-check-icon"),
                                 )
                             }
                         }
@@ -2803,30 +2808,46 @@ private fun RunningTaskPanel(
                     val quickPending = quickPhase == QuickInterruptActionPhase.WAITING_FOR_START
                         || quickPhase == QuickInterruptActionPhase.SENDING
                         || quickPhase == QuickInterruptActionPhase.RECONCILING
+                    val quickActionEnabled = quickInterruptEnabled && controller.canQuickInterrupt(task)
                     val quickStateDescription = when (quickPhase) {
                         QuickInterruptActionPhase.WAITING_FOR_START -> "開始状態を確認後に割込を送信します"
                         QuickInterruptActionPhase.SENDING -> "割込を送信中です"
                         QuickInterruptActionPhase.RECONCILING -> "割込結果を確認中です"
-                        QuickInterruptActionPhase.RETRY_REQUIRED, null -> "割込"
+                        QuickInterruptActionPhase.RETRY_REQUIRED, null -> "割り込み"
                     }
-                    TextButton(
+                    IconButton(
                         onClick = { controller.quickInterrupt(task) },
-                        enabled = quickInterruptEnabled && controller.canQuickInterrupt(task),
-                        modifier = Modifier.height(48.dp).testTag("quick-interrupt-button").then(
-                            if (quickPending) Modifier.semantics {
-                                stateDescription = quickStateDescription
-                                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
-                            } else Modifier,
-                        ),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        enabled = quickActionEnabled,
+                        modifier = Modifier.size(48.dp)
+                            .testTag("quick-interrupt-button")
+                            .semantics {
+                                contentDescription = "割り込み"
+                                if (quickPending) {
+                                    stateDescription = quickStateDescription
+                                    progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+                                }
+                            },
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("割込", fontSize = 13.sp)
-                            Spacer(Modifier.width(4.dp))
-                            Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
-                                if (quickPending) CircularProgressIndicator(
-                                    modifier = Modifier.size(11.dp),
+                        Box(
+                            modifier = Modifier.size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE8E8E5))
+                                .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
+                                .graphicsLayer { alpha = if (quickActionEnabled) 1f else 0.5f },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (quickPending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(15.dp),
+                                    color = TaskChuteColors.Background,
                                     strokeWidth = 1.5.dp,
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_material_bolt_24),
+                                    contentDescription = null,
+                                    tint = TaskChuteColors.Background,
+                                    modifier = Modifier.size(20.dp).testTag("quick-interrupt-bolt-icon"),
                                 )
                             }
                         }

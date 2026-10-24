@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
@@ -455,7 +456,9 @@ class TodayScreenInstrumentedTest {
         assertEquals(LifecycleState.RUNNING, day.allEntries.single { it.id == "entry-b" }.lifecycleState)
         assertEquals(LifecycleState.PLANNED, day.allEntries.single { it.id == repo.interruptRequests.single().continuationEntryId }.lifecycleState)
         assertEquals(1, day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING })
-        composeRule.onNodeWithContentDescription("中断済み").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("中断済み").assertIsDisplayed().assertHasNoClickAction()
+        composeRule.onNodeWithTag("interrupted-row-pause-icon").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("中断").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("実行中タスクを完了").assertIsDisplayed()
     }
 
@@ -473,8 +476,12 @@ class TodayScreenInstrumentedTest {
         val buttonBounds = composeRule.onNodeWithTag("quick-interrupt-button").fetchSemanticsNode().boundsInRoot
         assertEquals(with(composeRule.density) { 104.dp.toPx() }, panelBounds.height, 1f)
         assertEquals(with(composeRule.density) { 48.dp.toPx() }, buttonBounds.height, 1f)
+        assertEquals(with(composeRule.density) { 48.dp.toPx() }, buttonBounds.width, 1f)
         assertTrue(buttonBounds.top >= panelBounds.top && buttonBounds.bottom <= panelBounds.bottom)
-        composeRule.onNodeWithText("割込").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("割り込み").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("割込").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithTag("quick-interrupt-bolt-icon", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("quick-interrupt-button").assertIsDisplayed().assertIsEnabled().performClick()
 
         composeRule.waitUntil(10_000) {
             repo.quickInterruptCalls.get() == 1 && controller?.state?.pendingEntryIds?.isEmpty() == true
@@ -522,6 +529,10 @@ class TodayScreenInstrumentedTest {
                 composeRule.onAllNodesWithTag("quick-interrupt-button").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("quick-interrupt-button").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithContentDescription("割り込み").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("割込").fetchSemanticsNodes().isEmpty())
+        val actionBounds = composeRule.onNodeWithTag("quick-interrupt-button").fetchSemanticsNode().boundsInRoot
+        assertEquals(with(composeRule.density) { 48.dp.toPx() }, actionBounds.width, 1f)
         val actionVisibleMs = (SystemClock.elapsedRealtimeNanos() - startTapNanos) / 1_000_000
 
         val quickTapNanos = SystemClock.elapsedRealtimeNanos()
@@ -531,6 +542,12 @@ class TodayScreenInstrumentedTest {
         }
         val tapAcknowledgedMs = (SystemClock.elapsedRealtimeNanos() - quickTapNanos) / 1_000_000
         composeRule.onNodeWithTag("quick-interrupt-button").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("割り込み").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("割込").fetchSemanticsNodes().isEmpty())
+        val pendingBounds = composeRule.onNodeWithTag("quick-interrupt-button").fetchSemanticsNode().boundsInRoot
+        assertEquals(actionBounds.width, pendingBounds.width, 1f)
+        assertEquals(actionBounds.height, pendingBounds.height, 1f)
+        assertEquals(actionBounds.left, pendingBounds.left, 1f)
         assertEquals(
             ProgressBarRangeInfo.Indeterminate,
             composeRule.onNodeWithTag("quick-interrupt-button")
@@ -1120,6 +1137,7 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("20分)").assertIsDisplayed()
         composeRule.onNodeWithText("(", substring = false).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("完了済み").assertIsDisplayed()
+        composeRule.onNodeWithTag("completed-row-check-icon").assertIsDisplayed()
     }
 
     @Test
