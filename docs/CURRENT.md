@@ -160,6 +160,16 @@ The focused `AndroidHomeWidgetInstrumentedTest` passed `10 / 10` on `TaskChute_A
 
 Galaxy S23 manual verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL` pending the Product Owner's check of this exact Phone APK. This corrective changes no Worker/API/domain contract/schema/migration/dependency or persisted data. Production remains `NOT_RUN`; Product Verified `NO`; Released `NO`.
 
+#### Compact fixed-height Galaxy S23 trial — 2026-10-24
+
+Implementation `eb486cc9fbd5c96666b28451893874fd07695a0b` is pushed to `main` as a trial of the Product Owner-selected fixed-frame direction B. The adjustable visual-frame candidate is 188 dp: the launcher-allocation root keeps `match_parent`, while an inner 188 dp content frame vertically centers Running, Idle, empty, and status groups. Existing next-Planned preview, 48 dp actions, and pending Start disabled/no-PendingIntent behavior remain intact. No lifecycle, API, schema, dependency, or persisted-data semantics changed.
+
+The source layout test now covers 280 dp width, 188/220/240 dp allocations, fontScale 1.0/1.3, long titles, estimated and estimate-less Running including overrun, notice, empty, and status states; it also checks balanced frame spacing and 48 dp actions. XML parsing and `git diff --check` pass. `:app:compileDebugAndroidTestKotlin` passes, so the test is compiled but **not executed**; layout measurement and Android runtime remain `NOT_RUN / ENV_BLOCKED`. The 188 dp height is a trial candidate, not a measured optimum or Product Verified result.
+
+Exact-SHA [GitHub Actions run 40080063028](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40080063028) passed on attempt 1: Android JVM, signed Phone/Wear builds, instrumentation APK compilation, signer verification, and uploads passed; Web/Worker was skipped for Android-only scope. Phone artifact `taskchute-android-debug-eb486cc9fbd5c96666b28451893874fd07695a0b` / ID `12554019184` (expires `2026-10-31`) contains package `com.hedgetheapp.taskchute`, versionCode `1283`, APK SHA-256 `FC1BC2A281C3FC3D36071A1FCC187E9CB4FBF18135D64E07A620321934BC736B`, artifact ZIP SHA-256 `B64DD0BC57C6269BAA918E41786A076D6D123632DFD7DD80E07E7638100C335E`, and signer SHA-256 `690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3`.
+
+Galaxy S23 verification of this exact trial APK is `NOT_RUN / PRODUCT_OWNER_MANUAL`; Product Verified remains `NO`, Production `NOT_RUN`, and Released `NO`.
+
 ### D-177 Android Home Widget canonical action-control restore corrective — 2026-10-08
 
 **Status: IMPLEMENTED / LOCAL + EXACT-SHA CI PASS / GALAXY S23 REPRESENTATIVE SMOKE PASS (USER_CONFIRMED) / PHONE RUNTIME ENV_BLOCKED / PRODUCTION NOT_RUN / RELEASED NO.** Implementation `8462c7fab753b945688ac15b6af408a83dfee666` explicitly restores canonical Running Complete and eligible Idle Start to `VISIBLE` while binding the canonical PendingIntent and content description. Ineligible canonical states explicitly set the action `GONE` and clear the PendingIntent. The correction fixes the v4 optimistic-to-canonical RemoteViews reapply defect without changing v4 optimistic feedback, server authority, alarms, action gate, authentication, or cache behavior.
