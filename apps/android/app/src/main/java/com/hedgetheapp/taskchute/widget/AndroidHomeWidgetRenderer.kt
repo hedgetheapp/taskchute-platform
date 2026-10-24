@@ -60,6 +60,10 @@ internal object AndroidHomeWidgetRenderer {
                 setViewVisibility(R.id.home_widget_running_no_next, View.GONE)
                 setViewVisibility(R.id.home_widget_complete_action, View.GONE)
                 setOnClickPendingIntent(R.id.home_widget_complete_action, null)
+                setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+                setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+                setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
+                setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
             }
 
             is AndroidHomeWidgetOptimisticPresentation.Idle -> {
@@ -69,6 +73,10 @@ internal object AndroidHomeWidgetRenderer {
                 if (next == null) {
                     setViewVisibility(R.id.home_widget_idle_task_row, View.GONE)
                     setViewVisibility(R.id.home_widget_idle_empty, View.VISIBLE)
+                    setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+                    setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+                    setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
+                    setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 } else {
                     setViewVisibility(R.id.home_widget_idle_task_row, View.VISIBLE)
                     setViewVisibility(R.id.home_widget_idle_empty, View.GONE)
@@ -79,9 +87,15 @@ internal object AndroidHomeWidgetRenderer {
                         setViewVisibility(R.id.home_widget_idle_task_metadata, View.VISIBLE)
                         setTextViewText(R.id.home_widget_idle_task_metadata, next.metadata)
                     }
+                    setViewVisibility(R.id.home_widget_idle_start_action, View.VISIBLE)
+                    setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+                    setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
+                    setContentDescription(
+                        R.id.home_widget_idle_start_action,
+                        context.getString(R.string.home_widget_start_pending_action),
+                    )
+                    setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 }
-                setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
-                setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
             }
         }
     }
@@ -178,6 +192,10 @@ internal object AndroidHomeWidgetRenderer {
                 }
 
                 val executionId = canonicalAndroidHomeWidgetCompleteExecutionId(projection.task, state.day)
+                views.setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+                views.setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+                views.setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
+                views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 if (executionId != null) {
                     views.setViewVisibility(R.id.home_widget_complete_action, View.VISIBLE)
                     val completeIntent = AndroidHomeWidgetIntents.actionPendingIntent(
@@ -213,6 +231,8 @@ internal object AndroidHomeWidgetRenderer {
                 val startTask = canonicalAndroidHomeWidgetStartTask(projection)
                 if (startTask != null) {
                     views.setViewVisibility(R.id.home_widget_idle_start_action, View.VISIBLE)
+                    views.setBoolean(R.id.home_widget_idle_start_action, "setEnabled", true)
+                    views.setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", true)
                     val startIntent = AndroidHomeWidgetIntents.actionPendingIntent(
                         context,
                         widgetId,
@@ -226,6 +246,8 @@ internal object AndroidHomeWidgetRenderer {
                     )
                 } else {
                     views.setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+                    views.setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
+                    views.setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
                     views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 }
             }
@@ -328,3 +350,4 @@ internal object AndroidHomeWidgetIntents {
 
     private fun pendingIntentFlags(): Int = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 }
+

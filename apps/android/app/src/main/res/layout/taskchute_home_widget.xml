@@ -1,10 +1,13 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/home_widget_root"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="@drawable/home_widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingStart="12dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="10dp">
 
     <TextView
         android:id="@+id/home_widget_notice"
@@ -357,12 +360,13 @@
                 android:focusable="true">
 
                 <ImageView
+                    android:id="@+id/home_widget_idle_start_icon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_gravity="center"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_material_play_arrow_24"
-                    android:tint="@color/home_widget_primary_text" />
+                    android:tint="@color/home_widget_action_icon_tint" />
             </FrameLayout>
         </LinearLayout>
 
@@ -389,3 +393,4 @@
         android:textSize="13sp"
         android:visibility="gone" />
 </LinearLayout>
+

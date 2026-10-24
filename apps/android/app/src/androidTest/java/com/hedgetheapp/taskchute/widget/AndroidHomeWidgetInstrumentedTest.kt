@@ -1,7 +1,9 @@
 package com.hedgetheapp.taskchute.widget
 
 import android.content.ComponentName
+import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.view.View
 import android.widget.Chronometer
 import android.widget.FrameLayout
@@ -20,6 +22,7 @@ import com.hedgetheapp.taskchute.today.TodaySection
 import com.hedgetheapp.taskchute.today.TodayTask
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -124,7 +127,19 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.GONE, promoted.findViewById<View>(R.id.home_widget_running_content).visibility)
         assertEquals(View.VISIBLE, promoted.findViewById<View>(R.id.home_widget_idle_content).visibility)
         assertEquals("Next task", promoted.findViewById<android.widget.TextView>(R.id.home_widget_idle_task_title).text)
-        assertEquals(View.GONE, promoted.findViewById<View>(R.id.home_widget_idle_start_action).visibility)
+        val pendingStart = promoted.findViewById<View>(R.id.home_widget_idle_start_action)
+        assertEquals(View.VISIBLE, pendingStart.visibility)
+        assertFalse(pendingStart.isEnabled)
+        assertFalse(pendingStart.hasOnClickListeners())
+        assertFalse(pendingStart.performClick())
+        assertEquals(
+            context.getString(R.string.home_widget_start_pending_action),
+            pendingStart.contentDescription,
+        )
+        val pendingIcon = promoted.findViewById<ImageView>(R.id.home_widget_idle_start_icon)
+        assertNotNull(pendingIcon.imageTintList)
+        assertFalse(pendingIcon.isEnabled)
+        assertEquals(View.VISIBLE, pendingIcon.visibility)
 
         val empty = withoutNext.get()
         assertEquals(View.GONE, empty.findViewById<View>(R.id.home_widget_running_content).visibility)
@@ -151,20 +166,76 @@ class AndroidHomeWidgetInstrumentedTest {
     @Test
     fun optimisticCompleteReappliedCanonicalIdleRestoresStartAction() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val widget = attachMeasured(
+            context,
+            AndroidHomeWidgetRenderer.contentViews(context, 178, canonicalIdleState(withNext = true)),
+            widthDp = 280,
+            heightDp = 260,
+        )
+        val start = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
+        val canonicalBounds = Rect(start.left, start.top, start.right, start.bottom)
         val optimistic = AndroidHomeWidgetRenderer.optimisticViews(
             context,
             optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
         )
-        val root = applyAndReapply(
-            context,
-            optimistic,
-            AndroidHomeWidgetRenderer.contentViews(context, 178, canonicalIdleState(withNext = true)),
+
+        optimistic.reapply(context, widget.root)
+        layout(widget)
+        assertEquals(canonicalBounds, Rect(start.left, start.top, start.right, start.bottom))
+        assertEquals(View.VISIBLE, start.visibility)
+        assertFalse(start.isEnabled)
+        assertFalse(start.hasOnClickListeners())
+        assertFalse(start.performClick())
+        assertEquals(
+            context.getString(R.string.home_widget_start_pending_action),
+            start.contentDescription,
         )
-        val start = root.findViewById<View>(R.id.home_widget_idle_start_action)
+
+        optimistic.reapply(context, widget.root)
+        layout(widget)
+        assertFalse(start.isEnabled)
+        assertFalse(start.hasOnClickListeners())
+        assertEquals(canonicalBounds, Rect(start.left, start.top, start.right, start.bottom))
+
+        AndroidHomeWidgetRenderer.contentViews(context, 178, canonicalIdleState(withNext = true))
+            .reapply(context, widget.root)
+        layout(widget)
 
         assertEquals(View.VISIBLE, start.visibility)
+        assertTrue(start.isEnabled)
         assertTrue(start.hasOnClickListeners())
         assertEquals(context.getString(R.string.home_widget_start_action), start.contentDescription)
+        assertEquals(canonicalBounds, Rect(start.left, start.top, start.right, start.bottom))
+    }
+
+    @Test
+    fun optimisticCompleteRevertedToRunningClearsPromotedStartAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val widget = attachMeasured(
+            context,
+            AndroidHomeWidgetRenderer.contentViews(context, 184, canonicalIdleState(withNext = true)),
+            widthDp = 280,
+            heightDp = 260,
+        )
+        AndroidHomeWidgetRenderer.optimisticViews(
+            context,
+            optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", null)),
+        ).reapply(context, widget.root)
+        layout(widget)
+        val pendingStart = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
+        assertFalse(pendingStart.isEnabled)
+        assertFalse(pendingStart.hasOnClickListeners())
+
+        AndroidHomeWidgetRenderer.contentViews(context, 184, canonicalRunningState("execution"))
+            .reapply(context, widget.root)
+        layout(widget)
+
+        assertEquals(View.GONE, pendingStart.visibility)
+        assertFalse(pendingStart.hasOnClickListeners())
+        assertEquals(
+            View.VISIBLE,
+            widget.root.findViewById<View>(R.id.home_widget_complete_action).visibility,
+        )
     }
 
     @Test
@@ -193,6 +264,94 @@ class AndroidHomeWidgetInstrumentedTest {
 
         assertEquals(View.GONE, start.visibility)
         assertFalse(start.hasOnClickListeners())
+    }
+
+    @Test
+    fun rootFillsUnchangedLauncherAllocationAcrossLifecycleTransitionsAtNarrowWidth() {
+        val baseContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val scenarios = listOf(
+            1.0f to 220,
+            1.2f to 240,
+        )
+
+        scenarios.forEachIndexed { index, (fontScale, heightDp) ->
+            val configuration = Configuration(baseContext.resources.configuration).apply {
+                this.fontScale = fontScale
+            }
+            val context = baseContext.createConfigurationContext(configuration)
+            val views = listOf(
+                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalRunningState("execution")),
+                AndroidHomeWidgetRenderer.optimisticViews(
+                    context,
+                    optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!,
+                ),
+                AndroidHomeWidgetRenderer.optimisticViews(
+                    context,
+                    optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
+                ),
+                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = true)),
+                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = false)),
+            )
+            val widget = attachMeasured(context, views.first(), widthDp = 280, heightDp = heightDp)
+            val density = context.resources.displayMetrics.density
+            val expectedWidth = (280f * density).roundToInt()
+            val expectedHeight = (heightDp * density).roundToInt()
+
+            views.forEachIndexed { stateIndex, remoteViews ->
+                if (stateIndex > 0) {
+                    remoteViews.reapply(context, widget.root)
+                    layout(widget)
+                }
+                assertEquals("root width at fontScale=$fontScale state=$stateIndex", expectedWidth, widget.root.width)
+                assertEquals("root height at fontScale=$fontScale state=$stateIndex", expectedHeight, widget.root.height)
+
+                val runningContent = widget.root.findViewById<View>(R.id.home_widget_running_content)
+                if (runningContent.visibility == View.VISIBLE) {
+                    assertTrue(
+                        "Running content must fit without clipping at fontScale=$fontScale height=$heightDp",
+                        runningContent.bottom <= widget.root.height - widget.root.paddingBottom,
+                    )
+                    assertTrue(widget.root.findViewById<View>(R.id.home_widget_running_title).width > 0)
+                }
+
+                val idleRow = widget.root.findViewById<View>(R.id.home_widget_idle_task_row)
+                val idleContent = widget.root.findViewById<View>(R.id.home_widget_idle_content)
+                if (idleContent.visibility == View.VISIBLE && idleRow.visibility == View.VISIBLE) {
+                    val title = widget.root.findViewById<View>(R.id.home_widget_idle_task_title)
+                    val action = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
+                    assertTrue(title.width > 0)
+                    assertTrue("Idle title and action must not overlap", title.right <= action.left)
+                    assertEquals((48f * density).roundToInt(), action.width)
+                    assertEquals((48f * density).roundToInt(), action.height)
+                }
+            }
+        }
+    }
+
+    private data class MeasuredWidget(
+        val host: FrameLayout,
+        val root: View,
+        val widthPx: Int,
+        val heightPx: Int,
+    )
+
+    private fun attachMeasured(context: android.content.Context, views: RemoteViews, widthDp: Int, heightDp: Int): MeasuredWidget {
+        val host = FrameLayout(context)
+        val root = views.apply(context, host)
+        host.addView(root)
+        val widthPx = (widthDp * context.resources.displayMetrics.density).roundToInt()
+        val heightPx = (heightDp * context.resources.displayMetrics.density).roundToInt()
+        val widget = MeasuredWidget(host, root, widthPx, heightPx)
+        layout(widget)
+        return widget
+    }
+
+    private fun layout(widget: MeasuredWidget) {
+        widget.host.measure(
+            View.MeasureSpec.makeMeasureSpec(widget.widthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(widget.heightPx, View.MeasureSpec.EXACTLY),
+        )
+        widget.host.layout(0, 0, widget.widthPx, widget.heightPx)
     }
 
     private fun applyAndReapply(context: android.content.Context, first: RemoteViews, next: RemoteViews): View {
@@ -258,3 +417,4 @@ class AndroidHomeWidgetInstrumentedTest {
         activeStartedAt = executionId?.let { "2026-10-07T09:50:00Z" },
     )
 }
+
