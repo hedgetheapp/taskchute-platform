@@ -2708,11 +2708,15 @@ Production Firebase/credentials/deploy remain unapproved and `NOT_RUN`.
 
 ## D-177 — Android Home Widget v0.1
 
-Status: **Approved / Implementation not started**
+Status: **Approved / Implemented at source SHA `2996cc6a3ade721f9887ac6c37804f2d704d9e03` / Galaxy S23 NOT_RUN / Product Verified NO / Released NO**
 
 Canonical Decision: `docs/decisions/D-177_ANDROID_HOME_WIDGET_V01.md`.
 
 D-177 defines the first Android home-screen Widget as a compact current-Day execution surface. Running shows the current Task with elapsed / estimate / progress and the next Planned Task; after canonical Complete the completed Task disappears and the next Planned Task is promoted. Idle Start and Running Complete execute directly from the Widget using the existing encrypted Android Better Auth session and existing Today HTTP commands, without opening the app UI. The existing single-active-Execution invariant remains authoritative, so next-task Start is not dispatched while another Execution is active. No new API/schema/migration, foreground service, persistent background socket, minute server polling, Phone FCM requirement, or long-term dependency is approved.
+
+### D-177 two-slot Idle / immediate transition refinement — 2026-10-24
+
+Idle uses two ordered Planned slots: the first is the only actionable primary Start; the second, when present, is display-only preview. Running preserves its canonical current-task/time presentation and previews the first remaining Planned task. On Start, the tapped task appears immediately as provisional Running and the already-known second Planned task becomes its preview. On Complete, the first remaining Planned task is immediately promoted to the primary slot and the following task is previewed when known. Provisional controls remain disabled without lifecycle PendingIntents until canonical reconciliation; canonical state remains authoritative, and failure/stale/401/ambiguous outcomes reconcile to it. This is presentation-only and leaves lifecycle authority, server commands, identities, action gates, and D-177 platform boundaries unchanged. Implementation: `2996cc6a3ade721f9887ac6c37804f2d704d9e03`; evidence and unverified runtime/device scope are in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`.
 
 
 ### D-177 Running time-row refinement — 2026-10-07
