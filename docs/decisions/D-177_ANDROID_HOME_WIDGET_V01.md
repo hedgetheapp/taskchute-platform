@@ -275,3 +275,19 @@ Product Owner installed/tested the exact corrective build for implementation `84
 - after optimistic Complete reconciles to canonical Idle with an eligible next Planned Task, Start remains visible/actionable.
 
 This is representative smoke only, not a full device matrix or exhaustive Widget runtime verification. Automated Phone instrumentation remains `NOT_RUN / ENV_BLOCKED`. Production remains `NOT_RUN`; Released remains `NO`.
+
+
+## Action affordance and allocated-height corrective — 2026-10-24
+
+This corrective implements the already-approved D-177 optimistic Complete behavior and lifecycle authority; it adds no Product decision.
+
+- When optimistic Complete already knows the next Planned task, show its title and the existing 48 dp play-action slot immediately in the same row.
+- Keep that provisional slot disabled and clear its PendingIntent while canonical completion is unresolved. Restore its enabled state and bind a fresh Start PendingIntent only after canonical Idle confirms an eligible Planned task.
+- Explicitly hide, disable, and clear the Start action when an optimistic or canonical Running state makes it ineligible, and when canonical Idle has no eligible next task.
+- Fill the launcher-provided widget allocation with the root while preserving current compact content and the existing 48 dp action dimensions.
+
+**Implementation closeout — 2026-10-24.** Implementation `491e2b99413db6f2f44ff2040352a2f5cacf820d` adds the disabled pending visual and accessibility description, stateful icon tint, explicit Start clearing when Running returns, and `match_parent` root height with compact vertical padding. It does not change lifecycle authority, authentication, the D-177 action gate, canonical validation/reconciliation, alarms, or persistence.
+
+The focused `AndroidHomeWidgetInstrumentedTest` passes `10 / 10` on API 33. `RemoteViews.apply/reapply` coverage verifies the pending Complete→next Planned display has no listener/PendingIntent, repeated optimistic reapply stays disabled, canonical Idle restores the action within unchanged 48 dp bounds, and canonical Running/empty states clear it. Measured layout coverage at 280 dp width × 220 dp / fontScale 1.0 and 280 dp × 240 dp / fontScale 1.2 confirms the root fills the allocation, content fits, and the title does not overlap the action. `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` pass. Exact-SHA [CI run 40067179976](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40067179976) passed on attempt 1; the Android JVM and signed Phone/Wear job, instrumentation APK compile, signer checks, and artifact uploads passed. Web/Worker was skipped by Android-only classification. Phone artifact `taskchute-android-debug-491e2b99413db6f2f44ff2040352a2f5cacf820d` / ID `12549766535` (expires `2026-10-31`) has package `com.hedgetheapp.taskchute`, versionCode `1281`, APK SHA-256 `147E802332560780A14FA196AE10E3E7D76249ADD8F6489A0589E15B0044BFAB`, and CI-verified signer SHA-256 `690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3`.
+
+Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Product Verified remains `NO`, Production remains `NOT_RUN`, and Released remains `NO`. No Worker/API/shared contract/schema/migration/dependency or persisted-data change.
