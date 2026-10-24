@@ -1,6 +1,6 @@
 ## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
 
-Status: **Approved / implementation `ee9b6df3` / focused implementation and original exact-SHA CI PASS / local synthetic fail-closed runtime 26/26 PASS / nonprod Option C APPROVED 2026-10-23 / APP migration, deploy and QA NOT_RUN pending fresh Step C preflight / Product Verified NO / Released NO** (Product Owner 2026-10-21; Option A and minimal invisible lineage).
+Status: **Approved / implementation `ee9b6df3` / focused implementation and original exact-SHA CI PASS / local synthetic fail-closed runtime 26/26 PASS / nonprod Option C APPROVED 2026-10-23 / Step C Gates 0–3 PASS; APP 0040 and exact-source nonprod Worker deploy PASS; Gate 4 A/C/B API QA PASS; strict isolation NOT_VERIFIED (zero-candidate checkpoint supported; triggering request unknown) / Product Verified NO / Released NO** (Product Owner 2026-10-21; Option A and minimal invisible lineage).
 
 Canonical Decision: `docs/decisions/D-182_INTERRUPTION_HARD_DELETE_PRESERVED_LINEAGE_V01.md`.
 
