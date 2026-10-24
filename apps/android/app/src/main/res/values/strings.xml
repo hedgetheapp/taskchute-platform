@@ -5,6 +5,7 @@
     <string name="home_widget_running_label">今のタスク</string>
     <string name="home_widget_running_status">実行中</string>
     <string name="home_widget_next_label">次のタスク</string>
+    <string name="home_widget_preview_description">%1$s のプレビュー</string>
     <string name="home_widget_no_next_task">開始できるタスクはありません</string>
     <string name="home_widget_loading">Todayを読み込み中…</string>
     <string name="home_widget_unavailable">最新のTodayを取得できません</string>
@@ -12,6 +13,7 @@
     <string name="home_widget_start_action">次のタスクを開始</string>
     <string name="home_widget_start_pending_action">完了結果を確認中。次のタスクはまだ開始できません</string>
     <string name="home_widget_complete_action">実行中タスクを完了</string>
+    <string name="home_widget_complete_pending_action">開始結果を確認中。完了操作はまだできません</string>
     <string name="home_widget_start_blocked_action">実行中タスクが終了するまで開始できません</string>
     <string name="home_widget_action_error">操作を完了できませんでした。最新の状態を表示しています。</string>
 </resources>

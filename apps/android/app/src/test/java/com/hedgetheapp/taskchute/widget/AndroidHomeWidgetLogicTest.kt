@@ -36,6 +36,18 @@ class AndroidHomeWidgetLogicTest {
         val projection = projectAndroidHomeWidget(day, now) as AndroidHomeWidgetProjection.Idle
 
         assertEquals("planned-first", projection.nextPlanned?.id)
+        assertEquals("planned-second", projection.followingPlanned?.id)
+    }
+
+    @Test
+    fun idleProjectionKeepsSinglePlannedTaskInPrimarySlotOnly() {
+        val projection = projectAndroidHomeWidget(
+            day(tasks = listOf(task("only-planned", LifecycleState.PLANNED))),
+            now,
+        ) as AndroidHomeWidgetProjection.Idle
+
+        assertEquals("only-planned", projection.nextPlanned?.id)
+        assertNull(projection.followingPlanned)
     }
 
     @Test
@@ -45,6 +57,7 @@ class AndroidHomeWidgetLogicTest {
                 task("running", LifecycleState.RUNNING, executionId = "execution", startedAt = "2026-10-07T09:50:00Z"),
                 task("completed", LifecycleState.COMPLETED),
                 task("next", LifecycleState.PLANNED),
+                task("following", LifecycleState.PLANNED),
             ),
             execution = TodayExecution("execution", "running", "2026-10-07T09:50:00Z", 1800),
         )
@@ -53,11 +66,25 @@ class AndroidHomeWidgetLogicTest {
 
         assertEquals("running", projection.task.id)
         assertEquals("next", projection.nextPlanned?.id)
+        assertEquals("following", projection.followingPlanned?.id)
         assertEquals(600L, projection.elapsedSeconds)
         assertEquals(1200L, projection.remainingSeconds)
         assertNull(projection.overrunSeconds)
         assertEquals(1800, projection.estimateSeconds)
         assertEquals(333, projection.progressPermille)
+    }
+
+    @Test
+    fun runningProjectionHandlesNoPlannedTaskWithoutInventingPreview() {
+        val day = day(
+            tasks = listOf(task("running", LifecycleState.RUNNING, executionId = "execution")),
+            execution = TodayExecution("execution", "running", "2026-10-07T09:50:00Z", 1800),
+        )
+
+        val projection = projectAndroidHomeWidget(day, now) as AndroidHomeWidgetProjection.Running
+
+        assertNull(projection.nextPlanned)
+        assertNull(projection.followingPlanned)
     }
 
     @Test
@@ -327,11 +354,13 @@ class AndroidHomeWidgetLogicTest {
 
     @Test
     fun optimisticStartIsDisplayOnlyAndCannotOwnLifecycleOrBoundaryAlarm() {
-        val presentation = optimisticAndroidHomeWidgetStart("first", 123_456L)
+        val next = AndroidHomeWidgetDisplayTask("next", "10:30 · 25分")
+        val presentation = optimisticAndroidHomeWidgetStart("first", 123_456L, next)
 
         assertNotNull(presentation)
         assertEquals("first", presentation?.title)
         assertEquals(123_456L, presentation?.tapElapsedRealtimeMillis)
+        assertEquals(next, presentation?.nextPlanned)
         assertFalse(presentation?.canDispatchLifecycleAction ?: true)
         assertFalse(presentation?.ownsBoundaryAlarm ?: true)
     }
@@ -345,13 +374,16 @@ class AndroidHomeWidgetLogicTest {
     @Test
     fun optimisticCompletePromotesOnlyKnownNextTaskWithoutEnablingStart() {
         val next = AndroidHomeWidgetDisplayTask("next", "10:30 · 25分")
-        val promoted = optimisticAndroidHomeWidgetComplete(next)
+        val following = AndroidHomeWidgetDisplayTask("following", null)
+        val promoted = optimisticAndroidHomeWidgetComplete(next, following)
         val empty = optimisticAndroidHomeWidgetComplete(null)
 
         assertEquals(next, promoted.nextPlanned)
+        assertEquals(following, promoted.followingPlanned)
         assertFalse(promoted.canDispatchLifecycleAction)
         assertFalse(promoted.ownsBoundaryAlarm)
         assertNull(empty.nextPlanned)
+        assertNull(empty.followingPlanned)
         assertFalse(empty.canDispatchLifecycleAction)
     }
 

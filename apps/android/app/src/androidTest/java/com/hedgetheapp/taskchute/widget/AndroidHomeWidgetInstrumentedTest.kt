@@ -88,11 +88,15 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
-    fun optimisticStartPatchShowsRunningAndRemovesLifecycleControls() {
+    fun optimisticStartPatchShowsRunningWithDisabledCompleteControl() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val inflated = AtomicReference<View>()
-        val presentation = optimisticAndroidHomeWidgetStart("Tapped task", 123_456L)
+        val presentation = optimisticAndroidHomeWidgetStart(
+            "Tapped task",
+            123_456L,
+            AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
+        )
         assertNotNull(presentation)
 
         instrumentation.runOnMainSync {
@@ -105,7 +109,19 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.GONE, root.findViewById<View>(R.id.home_widget_idle_content).visibility)
         assertEquals("Tapped task", root.findViewById<android.widget.TextView>(R.id.home_widget_running_title).text)
         assertEquals(123_456L, root.findViewById<Chronometer>(R.id.home_widget_elapsed).base)
-        assertEquals(View.GONE, root.findViewById<View>(R.id.home_widget_complete_action).visibility)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.home_widget_running_next_label).visibility)
+        assertEquals(
+            "Next task",
+            root.findViewById<android.widget.TextView>(R.id.home_widget_running_next_title).text,
+        )
+        val pendingComplete = root.findViewById<View>(R.id.home_widget_complete_action)
+        assertEquals(View.VISIBLE, pendingComplete.visibility)
+        assertFalse(pendingComplete.isEnabled)
+        assertFalse(pendingComplete.hasOnClickListeners())
+        assertEquals(
+            context.getString(R.string.home_widget_complete_pending_action),
+            pendingComplete.contentDescription,
+        )
         assertEquals(View.GONE, root.findViewById<View>(R.id.home_widget_status).visibility)
     }
 
@@ -119,7 +135,10 @@ class AndroidHomeWidgetInstrumentedTest {
         instrumentation.runOnMainSync {
             withNext.set(AndroidHomeWidgetRenderer.optimisticViews(
                 context,
-                optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
+                optimisticAndroidHomeWidgetComplete(
+                    AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
+                    AndroidHomeWidgetDisplayTask("Following task", null),
+                ),
             ).apply(context, FrameLayout(context)))
             withoutNext.set(AndroidHomeWidgetRenderer.optimisticViews(
                 context,
@@ -131,6 +150,11 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.GONE, promoted.findViewById<View>(R.id.home_widget_running_content).visibility)
         assertEquals(View.VISIBLE, promoted.findViewById<View>(R.id.home_widget_idle_content).visibility)
         assertEquals("Next task", promoted.findViewById<android.widget.TextView>(R.id.home_widget_idle_task_title).text)
+        assertEquals(View.VISIBLE, promoted.findViewById<View>(R.id.home_widget_idle_following_row).visibility)
+        assertEquals(
+            "Following task",
+            promoted.findViewById<android.widget.TextView>(R.id.home_widget_idle_following_title).text,
+        )
         val pendingStart = promoted.findViewById<View>(R.id.home_widget_idle_start_action)
         assertEquals(View.VISIBLE, pendingStart.visibility)
         assertFalse(pendingStart.isEnabled)
@@ -149,6 +173,7 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.GONE, empty.findViewById<View>(R.id.home_widget_running_content).visibility)
         assertEquals(View.GONE, empty.findViewById<View>(R.id.home_widget_idle_task_row).visibility)
         assertEquals(View.VISIBLE, empty.findViewById<View>(R.id.home_widget_idle_empty).visibility)
+        assertEquals(View.GONE, empty.findViewById<View>(R.id.home_widget_idle_following_row).visibility)
     }
 
     @Test
@@ -243,6 +268,54 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
+    fun canonicalTwoSlotLabelsAndActionsKeepSecondaryPreviewNonActionable() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val idle = AndroidHomeWidgetRenderer.contentViews(
+            context,
+            185,
+            canonicalIdleState(withNext = true),
+        ).apply(context, FrameLayout(context))
+
+        assertEquals(
+            context.getString(R.string.home_widget_next_label),
+            idle.findViewById<android.widget.TextView>(R.id.home_widget_idle_label).text,
+        )
+        assertEquals(View.VISIBLE, idle.findViewById<View>(R.id.home_widget_idle_following_row).visibility)
+        assertEquals(
+            context.getString(R.string.home_widget_preview_description, "Following task"),
+            idle.findViewById<View>(R.id.home_widget_idle_following_row).contentDescription,
+        )
+        assertTrue(idle.findViewById<View>(R.id.home_widget_idle_start_action).hasOnClickListeners())
+        assertFalse(idle.findViewById<View>(R.id.home_widget_idle_following_row).hasOnClickListeners())
+        assertNoRedundantOrdinalCopy(idle)
+
+        val running = AndroidHomeWidgetRenderer.contentViews(
+            context,
+            186,
+            canonicalRunningState("execution"),
+        ).apply(context, FrameLayout(context))
+        assertEquals(
+            context.getString(R.string.home_widget_running_label),
+            running.findViewById<android.widget.TextView>(R.id.home_widget_running_label).text,
+        )
+        assertEquals(
+            context.getString(R.string.home_widget_next_label),
+            running.findViewById<android.widget.TextView>(R.id.home_widget_running_next_label).text,
+        )
+        assertEquals(
+            "Next task",
+            running.findViewById<android.widget.TextView>(R.id.home_widget_running_next_title).text,
+        )
+        assertEquals(
+            context.getString(R.string.home_widget_preview_description, "Next task"),
+            running.findViewById<View>(R.id.home_widget_running_next_row).contentDescription,
+        )
+        assertFalse(running.findViewById<View>(R.id.home_widget_running_next_row).hasOnClickListeners())
+        assertTrue(running.findViewById<View>(R.id.home_widget_complete_action).hasOnClickListeners())
+        assertNoRedundantOrdinalCopy(running)
+    }
+
+    @Test
     fun canonicalRunningWithoutExecutionHidesAndClearsPreviouslyBoundCompleteAction() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = applyAndReapply(
@@ -311,11 +384,18 @@ class AndroidHomeWidgetInstrumentedTest {
                 ),
                 AndroidHomeWidgetRenderer.optimisticViews(
                     context,
-                    optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!,
+                    optimisticAndroidHomeWidgetStart(
+                        "Running task",
+                        123_456L,
+                        AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
+                    )!!,
                 ),
                 AndroidHomeWidgetRenderer.optimisticViews(
                     context,
-                    optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
+                    optimisticAndroidHomeWidgetComplete(
+                        AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
+                        AndroidHomeWidgetDisplayTask("Following task", null),
+                    ),
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
@@ -370,6 +450,11 @@ class AndroidHomeWidgetInstrumentedTest {
                     val complete = widget.root.findViewById<View>(R.id.home_widget_complete_action)
                     assertEquals((48f * density).roundToInt(), complete.width)
                     assertEquals((48f * density).roundToInt(), complete.height)
+                    val runningCard = widget.root.findViewById<View>(R.id.home_widget_running_card)
+                    assertEquals(
+                        runningCard.top + runningCard.height / 2,
+                        complete.top + complete.height / 2,
+                    )
                     val nextBounds = Rect()
                     (widget.root as ViewGroup).offsetDescendantRectToMyCoords(
                         widget.root.findViewById(R.id.home_widget_running_next_row),
@@ -390,6 +475,11 @@ class AndroidHomeWidgetInstrumentedTest {
                     assertTrue("Idle title and action must not overlap", title.right <= action.left)
                     assertEquals((48f * density).roundToInt(), action.width)
                     assertEquals((48f * density).roundToInt(), action.height)
+                    val followingRow = widget.root.findViewById<View>(R.id.home_widget_idle_following_row)
+                    assertEquals(View.VISIBLE, followingRow.visibility)
+                    assertTrue("Second preview follows the primary task", followingRow.top >= idleRow.bottom)
+                    val followingTitle = widget.root.findViewById<View>(R.id.home_widget_idle_following_title)
+                    assertTrue("Second preview title must remain in bounds", followingTitle.right <= followingRow.right)
                 }
 
                 val status = widget.root.findViewById<View>(R.id.home_widget_status)
@@ -470,7 +560,15 @@ class AndroidHomeWidgetInstrumentedTest {
     ): AndroidHomeWidgetState.Content {
         val task = widgetTask("running", LifecycleState.RUNNING, executionId, title, estimateSeconds)
         val execution = executionId?.let { TodayExecution(it, task.id, startedAt, estimateSeconds) }
-        val day = widgetDay(listOf(task), execution)
+        val planned = if (execution == null) {
+            emptyList()
+        } else {
+            listOf(
+                widgetTask("next", LifecycleState.PLANNED, title = "Next task"),
+                widgetTask("following", LifecycleState.PLANNED, title = "Following task"),
+            )
+        }
+        val day = widgetDay(listOf(task) + planned, execution)
         val projection = if (execution == null) {
             AndroidHomeWidgetProjection.Running(
                 task = task,
@@ -489,10 +587,30 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     private fun canonicalIdleState(withNext: Boolean, title: String = "Next task"): AndroidHomeWidgetState.Content {
-        val tasks = if (withNext) listOf(widgetTask("next", LifecycleState.PLANNED, title = title)) else emptyList()
+        val tasks = if (withNext) {
+            listOf(
+                widgetTask("next", LifecycleState.PLANNED, title = title),
+                widgetTask("following", LifecycleState.PLANNED, title = "Following task"),
+            )
+        } else {
+            emptyList()
+        }
         val day = widgetDay(tasks, execution = null)
         val projection = projectAndroidHomeWidget(day, Instant.parse("2026-10-07T10:00:00Z")) as AndroidHomeWidgetProjection.Idle
         return AndroidHomeWidgetState.Content(day, projection)
+    }
+
+    private fun assertNoRedundantOrdinalCopy(root: View) {
+        fun visit(view: View) {
+            val text = (view as? android.widget.TextView)?.text?.toString().orEmpty()
+            val description = view.contentDescription?.toString().orEmpty()
+            assertFalse(text.contains("次の次のタスク") || text.contains("その次のタスク"))
+            assertFalse(description.contains("次の次のタスク") || description.contains("その次のタスク"))
+            if (view is ViewGroup) {
+                repeat(view.childCount) { index -> visit(view.getChildAt(index)) }
+            }
+        }
+        visit(root)
     }
 
     private fun widgetDay(tasks: List<TodayTask>, execution: TodayExecution?): TodayDay = TodayDay(

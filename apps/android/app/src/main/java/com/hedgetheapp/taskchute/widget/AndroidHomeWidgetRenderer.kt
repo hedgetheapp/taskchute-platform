@@ -57,14 +57,40 @@ internal object AndroidHomeWidgetRenderer {
                 setViewVisibility(R.id.home_widget_overrun_row, View.GONE)
                 setViewVisibility(R.id.home_widget_progress, View.GONE)
                 setViewVisibility(R.id.home_widget_progress_overrun, View.GONE)
-                setViewVisibility(R.id.home_widget_running_next_row, View.GONE)
-                setViewVisibility(R.id.home_widget_running_no_next, View.GONE)
-                setViewVisibility(R.id.home_widget_complete_action, View.GONE)
+                val next = presentation.nextPlanned
+                if (next == null) {
+                    setViewVisibility(R.id.home_widget_running_next_label, View.GONE)
+                    setViewVisibility(R.id.home_widget_running_next_row, View.GONE)
+                    setViewVisibility(R.id.home_widget_running_no_next, View.VISIBLE)
+                    setContentDescription(R.id.home_widget_running_next_row, null)
+                } else {
+                    setViewVisibility(R.id.home_widget_running_next_label, View.VISIBLE)
+                    setViewVisibility(R.id.home_widget_running_next_row, View.VISIBLE)
+                    setViewVisibility(R.id.home_widget_running_no_next, View.GONE)
+                    setDisplayTaskText(
+                        this,
+                        R.id.home_widget_running_next_title,
+                        R.id.home_widget_running_next_metadata,
+                        next,
+                    )
+                    setContentDescription(
+                        R.id.home_widget_running_next_row,
+                        context.getString(R.string.home_widget_preview_description, next.title),
+                    )
+                }
+                setViewVisibility(R.id.home_widget_complete_action, View.VISIBLE)
+                setBoolean(R.id.home_widget_complete_action, "setEnabled", false)
+                setBoolean(R.id.home_widget_stop_icon, "setEnabled", false)
+                setContentDescription(
+                    R.id.home_widget_complete_action,
+                    context.getString(R.string.home_widget_complete_pending_action),
+                )
                 setOnClickPendingIntent(R.id.home_widget_complete_action, null)
                 setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
                 setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
                 setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
                 setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
+                setViewVisibility(R.id.home_widget_idle_following_row, View.GONE)
             }
 
             is AndroidHomeWidgetOptimisticPresentation.Idle -> {
@@ -74,6 +100,8 @@ internal object AndroidHomeWidgetRenderer {
                 if (next == null) {
                     setViewVisibility(R.id.home_widget_idle_task_row, View.GONE)
                     setViewVisibility(R.id.home_widget_idle_empty, View.VISIBLE)
+                    setViewVisibility(R.id.home_widget_idle_following_row, View.GONE)
+                    setContentDescription(R.id.home_widget_idle_following_row, null)
                     setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
                     setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
                     setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
@@ -88,6 +116,22 @@ internal object AndroidHomeWidgetRenderer {
                         setViewVisibility(R.id.home_widget_idle_task_metadata, View.VISIBLE)
                         setTextViewText(R.id.home_widget_idle_task_metadata, next.metadata)
                     }
+                    setDisplayTaskText(
+                        this,
+                        R.id.home_widget_idle_following_title,
+                        R.id.home_widget_idle_following_metadata,
+                        presentation.followingPlanned,
+                    )
+                    setContentDescription(
+                        R.id.home_widget_idle_following_row,
+                        presentation.followingPlanned?.let {
+                            context.getString(R.string.home_widget_preview_description, it.title)
+                        },
+                    )
+                    setViewVisibility(
+                        R.id.home_widget_idle_following_row,
+                        if (presentation.followingPlanned == null) View.GONE else View.VISIBLE,
+                    )
                     setViewVisibility(R.id.home_widget_idle_start_action, View.VISIBLE)
                     setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
                     setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
@@ -188,12 +232,19 @@ internal object AndroidHomeWidgetRenderer {
 
                 val next = projection.nextPlanned
                 if (next == null) {
+                    views.setViewVisibility(R.id.home_widget_running_next_label, View.GONE)
                     views.setViewVisibility(R.id.home_widget_running_next_row, android.view.View.GONE)
                     views.setViewVisibility(R.id.home_widget_running_no_next, android.view.View.VISIBLE)
+                    views.setContentDescription(R.id.home_widget_running_next_row, null)
                 } else {
+                    views.setViewVisibility(R.id.home_widget_running_next_label, View.VISIBLE)
                     views.setViewVisibility(R.id.home_widget_running_next_row, android.view.View.VISIBLE)
                     views.setViewVisibility(R.id.home_widget_running_no_next, android.view.View.GONE)
                     setTaskText(views, R.id.home_widget_running_next_title, R.id.home_widget_running_next_metadata, next)
+                    views.setContentDescription(
+                        R.id.home_widget_running_next_row,
+                        context.getString(R.string.home_widget_preview_description, next.title),
+                    )
                 }
 
                 val executionId = canonicalAndroidHomeWidgetCompleteExecutionId(projection.task, state.day)
@@ -201,6 +252,7 @@ internal object AndroidHomeWidgetRenderer {
                 views.setBoolean(R.id.home_widget_idle_start_action, "setEnabled", false)
                 views.setBoolean(R.id.home_widget_idle_start_icon, "setEnabled", false)
                 views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
+                views.setViewVisibility(R.id.home_widget_idle_following_row, View.GONE)
                 if (executionId != null) {
                     views.setViewVisibility(R.id.home_widget_complete_action, View.VISIBLE)
                     val completeIntent = AndroidHomeWidgetIntents.actionPendingIntent(
@@ -208,6 +260,7 @@ internal object AndroidHomeWidgetRenderer {
                         widgetId,
                         AndroidHomeWidgetAction.Complete(projection.task.id, executionId),
                         projection.nextPlanned?.toDisplayTask(),
+                        projection.followingPlanned?.toDisplayTask(),
                     )
                     views.setOnClickPendingIntent(R.id.home_widget_complete_action, completeIntent)
                     views.setContentDescription(
@@ -227,13 +280,35 @@ internal object AndroidHomeWidgetRenderer {
                 if (next == null) {
                     views.setViewVisibility(R.id.home_widget_idle_task_row, View.GONE)
                     views.setViewVisibility(R.id.home_widget_idle_empty, View.VISIBLE)
+                    views.setViewVisibility(R.id.home_widget_idle_following_row, View.GONE)
+                    views.setContentDescription(R.id.home_widget_idle_following_row, null)
                 } else {
                     views.setViewVisibility(R.id.home_widget_idle_task_row, View.VISIBLE)
                     views.setViewVisibility(R.id.home_widget_idle_empty, View.GONE)
                     setTaskText(views, R.id.home_widget_idle_task_title, R.id.home_widget_idle_task_metadata, next)
+                    setDisplayTaskText(
+                        views,
+                        R.id.home_widget_idle_following_title,
+                        R.id.home_widget_idle_following_metadata,
+                        projection.followingPlanned?.toDisplayTask(),
+                    )
+                    views.setViewVisibility(
+                        R.id.home_widget_idle_following_row,
+                        if (projection.followingPlanned == null) View.GONE else View.VISIBLE,
+                    )
+                    views.setContentDescription(
+                        R.id.home_widget_idle_following_row,
+                        projection.followingPlanned?.let {
+                            context.getString(R.string.home_widget_preview_description, it.title)
+                        },
+                    )
                 }
 
                 val startTask = canonicalAndroidHomeWidgetStartTask(projection)
+                views.setViewVisibility(R.id.home_widget_complete_action, View.GONE)
+                views.setBoolean(R.id.home_widget_complete_action, "setEnabled", false)
+                views.setBoolean(R.id.home_widget_stop_icon, "setEnabled", false)
+                views.setOnClickPendingIntent(R.id.home_widget_complete_action, null)
                 if (startTask != null) {
                     views.setViewVisibility(R.id.home_widget_idle_start_action, View.VISIBLE)
                     views.setBoolean(R.id.home_widget_idle_start_action, "setEnabled", true)
@@ -243,6 +318,7 @@ internal object AndroidHomeWidgetRenderer {
                         widgetId,
                         AndroidHomeWidgetAction.Start(startTask.id),
                         startTask.toDisplayTask(),
+                        projection.followingPlanned?.toDisplayTask(),
                     )
                     views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, startIntent)
                     views.setContentDescription(
@@ -275,6 +351,27 @@ internal object AndroidHomeWidgetRenderer {
         }
     }
 
+    private fun setDisplayTaskText(
+        views: RemoteViews,
+        titleId: Int,
+        metadataId: Int,
+        task: AndroidHomeWidgetDisplayTask?,
+    ) {
+        if (task == null) {
+            views.setViewVisibility(titleId, View.GONE)
+            views.setViewVisibility(metadataId, View.GONE)
+            return
+        }
+        views.setTextViewText(titleId, task.title)
+        if (task.metadata.isNullOrBlank()) {
+            views.setViewVisibility(metadataId, View.GONE)
+        } else {
+            views.setViewVisibility(metadataId, View.VISIBLE)
+            views.setTextViewText(metadataId, task.metadata)
+        }
+        views.setViewVisibility(titleId, View.VISIBLE)
+    }
+
     private fun TodayTask.toDisplayTask() = AndroidHomeWidgetDisplayTask(
         title = title,
         metadata = formatAndroidHomeWidgetPlannedMetadata(this),
@@ -302,12 +399,16 @@ internal object AndroidHomeWidgetIntents {
     const val EXTRA_PRESENTATION_PAYLOAD_AVAILABLE = "presentation_payload_available"
     const val EXTRA_PRESENTATION_TASK_TITLE = "presentation_task_title"
     const val EXTRA_PRESENTATION_TASK_METADATA = "presentation_task_metadata"
+    const val EXTRA_FOLLOWING_PRESENTATION_PAYLOAD_AVAILABLE = "following_presentation_payload_available"
+    const val EXTRA_FOLLOWING_PRESENTATION_TASK_TITLE = "following_presentation_task_title"
+    const val EXTRA_FOLLOWING_PRESENTATION_TASK_METADATA = "following_presentation_task_metadata"
 
     fun actionPendingIntent(
         context: Context,
         widgetId: Int,
         action: AndroidHomeWidgetAction,
         presentationTask: AndroidHomeWidgetDisplayTask? = null,
+        followingPresentationTask: AndroidHomeWidgetDisplayTask? = null,
     ): PendingIntent {
         val (actionName, entryId, executionId) = when (action) {
             is AndroidHomeWidgetAction.Start -> Triple(ACTION_START, action.entryId, null)
@@ -321,14 +422,22 @@ internal object AndroidHomeWidgetIntents {
             .appendPath(entryId)
             .apply { executionId?.let(::appendPath) }
             .build()
+        val presentationPayloadAvailable =
+            action is AndroidHomeWidgetAction.Complete || presentationTask?.title?.isNotBlank() == true
         val intent = Intent(context, AndroidHomeWidgetActionReceiver::class.java)
             .setAction(actionName)
             .setData(identity)
             .putExtra(EXTRA_WIDGET_ID, widgetId)
             .putExtra(EXTRA_ENTRY_ID, entryId)
-            .putExtra(EXTRA_PRESENTATION_PAYLOAD_AVAILABLE, true)
+            .putExtra(EXTRA_PRESENTATION_PAYLOAD_AVAILABLE, presentationPayloadAvailable)
             .putExtra(EXTRA_PRESENTATION_TASK_TITLE, presentationTask?.title)
             .putExtra(EXTRA_PRESENTATION_TASK_METADATA, presentationTask?.metadata)
+            .putExtra(
+                EXTRA_FOLLOWING_PRESENTATION_PAYLOAD_AVAILABLE,
+                followingPresentationTask?.title?.isNotBlank() == true,
+            )
+            .putExtra(EXTRA_FOLLOWING_PRESENTATION_TASK_TITLE, followingPresentationTask?.title)
+            .putExtra(EXTRA_FOLLOWING_PRESENTATION_TASK_METADATA, followingPresentationTask?.metadata)
             .apply { executionId?.let { putExtra(EXTRA_EXECUTION_ID, it) } }
         return PendingIntent.getBroadcast(context, widgetId, intent, pendingIntentFlags())
     }

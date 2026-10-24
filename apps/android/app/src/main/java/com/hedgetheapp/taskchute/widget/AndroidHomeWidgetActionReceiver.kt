@@ -40,20 +40,30 @@ class AndroidHomeWidgetActionReceiver : BroadcastReceiver() {
                     is AndroidHomeWidgetAction.Start -> optimisticAndroidHomeWidgetStart(
                         intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_TITLE),
                         SystemClock.elapsedRealtime(),
+                        presentationTask(
+                            intent,
+                            AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_PAYLOAD_AVAILABLE,
+                            AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_TASK_TITLE,
+                            AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_TASK_METADATA,
+                        ),
                     )
 
                     is AndroidHomeWidgetAction.Complete -> if (
                         intent.getBooleanExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_PAYLOAD_AVAILABLE, false)
                     ) {
                         optimisticAndroidHomeWidgetComplete(
-                            intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_TITLE)
-                                ?.takeIf(String::isNotBlank)
-                                ?.let { title ->
-                                    AndroidHomeWidgetDisplayTask(
-                                        title = title,
-                                        metadata = intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_METADATA),
-                                    )
-                                },
+                            presentationTask(
+                                intent,
+                                AndroidHomeWidgetIntents.EXTRA_PRESENTATION_PAYLOAD_AVAILABLE,
+                                AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_TITLE,
+                                AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_METADATA,
+                            ),
+                            presentationTask(
+                                intent,
+                                AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_PAYLOAD_AVAILABLE,
+                                AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_TASK_TITLE,
+                                AndroidHomeWidgetIntents.EXTRA_FOLLOWING_PRESENTATION_TASK_METADATA,
+                            ),
                         )
                     } else {
                         null
@@ -116,6 +126,20 @@ class AndroidHomeWidgetActionReceiver : BroadcastReceiver() {
             if (entryId == null || executionId == null) null else AndroidHomeWidgetAction.Complete(entryId, executionId)
         }
         else -> null
+    }
+
+    private fun presentationTask(
+        intent: Intent,
+        availableExtra: String,
+        titleExtra: String,
+        metadataExtra: String,
+    ): AndroidHomeWidgetDisplayTask? {
+        if (!intent.getBooleanExtra(availableExtra, false)) return null
+        val title = intent.getStringExtra(titleExtra)?.takeIf(String::isNotBlank) ?: return null
+        return AndroidHomeWidgetDisplayTask(
+            title = title,
+            metadata = intent.getStringExtra(metadataExtra),
+        )
     }
 
     private object AppWidgetManagerIds {

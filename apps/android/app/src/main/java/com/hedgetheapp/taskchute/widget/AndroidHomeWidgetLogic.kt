@@ -22,9 +22,13 @@ internal sealed interface AndroidHomeWidgetProjection {
         val overrunSeconds: Long?,
         val estimateSeconds: Int?,
         val progressPermille: Int?,
+        val followingPlanned: TodayTask? = null,
     ) : AndroidHomeWidgetProjection
 
-    data class Idle(val nextPlanned: TodayTask?) : AndroidHomeWidgetProjection
+    data class Idle(
+        val nextPlanned: TodayTask?,
+        val followingPlanned: TodayTask? = null,
+    ) : AndroidHomeWidgetProjection
 
     data object InvalidActiveState : AndroidHomeWidgetProjection
 }
@@ -58,9 +62,11 @@ internal fun androidHomeWidgetRunningPresentation(
 }
 
 internal fun projectAndroidHomeWidget(day: TodayDay, now: Instant): AndroidHomeWidgetProjection {
-    val nextPlanned = day.allEntries.firstOrNull { it.lifecycleState == LifecycleState.PLANNED }
+    val plannedEntries = day.allEntries.filter { it.lifecycleState == LifecycleState.PLANNED }
+    val nextPlanned = plannedEntries.getOrNull(0)
+    val followingPlanned = plannedEntries.getOrNull(1)
     val execution = day.activeExecution
-    if (!hasActiveExecution(day)) return AndroidHomeWidgetProjection.Idle(nextPlanned)
+    if (!hasActiveExecution(day)) return AndroidHomeWidgetProjection.Idle(nextPlanned, followingPlanned)
     val runningTask = validatedActiveTask(day) ?: return AndroidHomeWidgetProjection.InvalidActiveState
     val canonicalExecution = execution ?: return AndroidHomeWidgetProjection.InvalidActiveState
 
@@ -78,6 +84,7 @@ internal fun projectAndroidHomeWidget(day: TodayDay, now: Instant): AndroidHomeW
         overrunSeconds = presentation.overrunSeconds,
         estimateSeconds = runningTask.estimateSeconds?.takeIf { it > 0 },
         progressPermille = presentation.progressPermille,
+        followingPlanned = followingPlanned,
     )
 }
 
@@ -139,6 +146,7 @@ internal sealed interface AndroidHomeWidgetOptimisticPresentation {
     data class Running(
         val title: String,
         val tapElapsedRealtimeMillis: Long,
+        val nextPlanned: AndroidHomeWidgetDisplayTask? = null,
     ) : AndroidHomeWidgetOptimisticPresentation {
         override val canDispatchLifecycleAction: Boolean = false
         override val ownsBoundaryAlarm: Boolean = false
@@ -146,6 +154,7 @@ internal sealed interface AndroidHomeWidgetOptimisticPresentation {
 
     data class Idle(
         val nextPlanned: AndroidHomeWidgetDisplayTask?,
+        val followingPlanned: AndroidHomeWidgetDisplayTask? = null,
     ) : AndroidHomeWidgetOptimisticPresentation {
         override val canDispatchLifecycleAction: Boolean = false
         override val ownsBoundaryAlarm: Boolean = false
@@ -155,15 +164,17 @@ internal sealed interface AndroidHomeWidgetOptimisticPresentation {
 internal fun optimisticAndroidHomeWidgetStart(
     taskTitle: String?,
     tapElapsedRealtimeMillis: Long,
+    nextPlanned: AndroidHomeWidgetDisplayTask? = null,
 ): AndroidHomeWidgetOptimisticPresentation.Running? =
     taskTitle?.takeIf(String::isNotBlank)?.let {
-        AndroidHomeWidgetOptimisticPresentation.Running(it, tapElapsedRealtimeMillis)
+        AndroidHomeWidgetOptimisticPresentation.Running(it, tapElapsedRealtimeMillis, nextPlanned)
     }
 
 internal fun optimisticAndroidHomeWidgetComplete(
     nextPlanned: AndroidHomeWidgetDisplayTask?,
+    followingPlanned: AndroidHomeWidgetDisplayTask? = null,
 ): AndroidHomeWidgetOptimisticPresentation.Idle =
-    AndroidHomeWidgetOptimisticPresentation.Idle(nextPlanned)
+    AndroidHomeWidgetOptimisticPresentation.Idle(nextPlanned, followingPlanned)
 
 internal sealed interface AndroidHomeWidgetActionPlan {
     data object Stale : AndroidHomeWidgetActionPlan
