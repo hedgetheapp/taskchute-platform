@@ -3,7 +3,12 @@ package com.hedgetheapp.taskchute.document
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.hedgetheapp.taskchute.ui.TaskChuteColors
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -122,6 +127,86 @@ class MarkdownLiveEditorTest {
 
         assertEquals("[](https://)", result.text)
         assertEquals(MarkdownSelection(3, 11), result.selection)
+    }
+
+    @Test
+    fun everyToolbarActionDoubleTapRestoresExactSourceAndSelectionForEmptyAndSelectedText() {
+        val beforeStates = listOf(
+            TextFieldValue("", selection = TextRange(0)),
+            TextFieldValue("xOpenAIy\nsecond", selection = TextRange(1, 7)),
+        )
+
+        MarkdownToolbarActionId.values().forEach { action ->
+            beforeStates.forEach { before ->
+                val first = applyMarkdownToolbarAction(before, action, previousEdit = null)
+                assertNotEquals("$action must perform its normal edit once", before, first.value)
+                assertNotNull("$action should be reversible before another edit", first.reversibleEdit)
+
+                val second = applyMarkdownToolbarAction(first.value, action, first.reversibleEdit)
+
+                assertTrue("$action second press should take the guarded revert", second.reverted)
+                assertEquals("$action restores exact raw source and selection", before, second.value)
+                assertNull(second.reversibleEdit)
+            }
+        }
+    }
+
+    @Test
+    fun requiredBoldAndLinkDoubleTapsRestoreTheirOriginalSourceAndSelection() {
+        val empty = TextFieldValue("", selection = TextRange(0))
+        val boldOnce = applyMarkdownToolbarAction(empty, MarkdownToolbarActionId.BOLD, null)
+        assertEquals("****", boldOnce.value.text)
+        assertEquals(empty, applyMarkdownToolbarAction(boldOnce.value, MarkdownToolbarActionId.BOLD, boldOnce.reversibleEdit).value)
+
+        val linkOnce = applyMarkdownToolbarAction(empty, MarkdownToolbarActionId.LINK, null)
+        assertEquals("[](https://)", linkOnce.value.text)
+        assertEquals(empty, applyMarkdownToolbarAction(linkOnce.value, MarkdownToolbarActionId.LINK, linkOnce.reversibleEdit).value)
+
+        val selected = TextFieldValue("xOpenAIy", selection = TextRange(1, 7))
+        val selectedLink = applyMarkdownToolbarAction(selected, MarkdownToolbarActionId.LINK, null)
+        assertEquals("x[OpenAI](https://)y", selectedLink.value.text)
+        assertEquals(selected, applyMarkdownToolbarAction(selectedLink.value, MarkdownToolbarActionId.LINK, selectedLink.reversibleEdit).value)
+    }
+
+    @Test
+    fun interveningTextInputOrSelectionMoveDoesNotRewindThePriorToolbarEdit() {
+        val first = applyMarkdownToolbarAction(TextFieldValue(""), MarkdownToolbarActionId.BOLD, null)
+        val typed = TextFieldValue("**あ**", selection = TextRange(3))
+
+        val afterTyping = applyMarkdownToolbarAction(typed, MarkdownToolbarActionId.BOLD, first.reversibleEdit)
+
+        assertFalse(afterTyping.reverted)
+        assertTrue(afterTyping.value.text.contains("あ"))
+
+        val movedSelection = first.value.copy(selection = TextRange(1))
+        val afterMovingSelection = applyMarkdownToolbarAction(movedSelection, MarkdownToolbarActionId.BOLD, first.reversibleEdit)
+
+        assertFalse(afterMovingSelection.reverted)
+        assertNotEquals("selection movement invalidates equality with the after snapshot", TextFieldValue(""), afterMovingSelection.value)
+    }
+
+    @Test
+    fun anotherToolbarActionReplacesThePriorUndoAndCompositionIsNotCaptured() {
+        val original = TextFieldValue("")
+        val first = applyMarkdownToolbarAction(original, MarkdownToolbarActionId.BOLD, null)
+        val second = applyMarkdownToolbarAction(first.value, MarkdownToolbarActionId.HEADING, first.reversibleEdit)
+        val third = applyMarkdownToolbarAction(second.value, MarkdownToolbarActionId.BOLD, second.reversibleEdit)
+
+        assertFalse(third.reverted)
+        assertNotEquals("a different action prevents an older Bold record from rewinding", original, third.value)
+
+        val composing = TextFieldValue("text", selection = TextRange(2), composition = TextRange(0, 4))
+        val composingFirst = applyMarkdownToolbarAction(composing, MarkdownToolbarActionId.BOLD, null)
+        assertNull(composingFirst.reversibleEdit)
+        assertNotNull(composingFirst.value.composition)
+    }
+
+    @Test
+    fun lineNumberTintIsOnlyAQuieterSecondaryTextTone() {
+        val tint = markdownLineNumberTint()
+
+        assertEquals(TaskChuteColors.SecondaryText.copy(alpha = 0.8f), tint)
+        assertEquals(0.8f, tint.alpha, 0.001f)
     }
 
     @Test

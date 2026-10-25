@@ -234,6 +234,66 @@ object MarkdownEditCommands {
 
 }
 
+internal enum class MarkdownToolbarActionId {
+    BOLD,
+    HEADING,
+    BULLET,
+    CHECKBOX,
+    QUOTE,
+    LINK,
+}
+
+internal data class ReversibleMarkdownToolbarEdit(
+    val action: MarkdownToolbarActionId,
+    val before: TextFieldValue,
+    val after: TextFieldValue,
+)
+
+internal data class MarkdownToolbarActionResult(
+    val value: TextFieldValue,
+    val reversibleEdit: ReversibleMarkdownToolbarEdit?,
+    val reverted: Boolean,
+)
+
+internal fun applyMarkdownToolbarAction(
+    current: TextFieldValue,
+    action: MarkdownToolbarActionId,
+    previousEdit: ReversibleMarkdownToolbarEdit?,
+): MarkdownToolbarActionResult {
+    if (previousEdit?.action == action && current == previousEdit.after) {
+        return MarkdownToolbarActionResult(
+            value = previousEdit.before,
+            reversibleEdit = null,
+            reverted = true,
+        )
+    }
+
+    val command = when (action) {
+        MarkdownToolbarActionId.BOLD -> MarkdownEditCommands::bold
+        MarkdownToolbarActionId.HEADING -> MarkdownEditCommands::heading
+        MarkdownToolbarActionId.BULLET -> MarkdownEditCommands::bullet
+        MarkdownToolbarActionId.CHECKBOX -> MarkdownEditCommands::checkbox
+        MarkdownToolbarActionId.QUOTE -> MarkdownEditCommands::quote
+        MarkdownToolbarActionId.LINK -> MarkdownEditCommands::link
+    }
+    val range = MarkdownSelection(current.selection.start, current.selection.end)
+    val edit = command(current.text, range)
+    val composition = current.composition?.let {
+        TextRange(edit.mapOffset(it.start), edit.mapOffset(it.end))
+    }
+    val next = TextFieldValue(
+        text = edit.text,
+        selection = TextRange(edit.selection.start, edit.selection.end),
+        composition = composition,
+    )
+    val reversibleEdit = if (current.composition == null && next.composition == null && next != current) {
+        ReversibleMarkdownToolbarEdit(action = action, before = current, after = next)
+    } else {
+        null
+    }
+    return MarkdownToolbarActionResult(next, reversibleEdit, reverted = false)
+}
+
 private data class LineEdit(val text: String, val map: (Int) -> Int)
 
 private data class SourceLine(val start: Int, val end: Int, val text: String, val hasNewline: Boolean)
@@ -456,6 +516,7 @@ fun MarkdownLiveEditor(
     var fieldValue by remember(editorSessionKey) {
         mutableStateOf(initialMarkdownTextFieldValue(value, initialCaretOffset))
     }
+    var reversibleToolbarEdit by remember(editorSessionKey) { mutableStateOf<ReversibleMarkdownToolbarEdit?>(null) }
     var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var hasFocus by remember { mutableStateOf(false) }
@@ -511,6 +572,7 @@ fun MarkdownLiveEditor(
     }
     val toggleCheckbox = rememberUpdatedState<(Int) -> Unit> { sourceStart ->
         if (enabled) {
+            reversibleToolbarEdit = null
             val result = toggleTaskCheckbox(fieldValue.text, sourceStart)
             if (result != null) {
                 val preserved = preservedSelectionAfterCheckboxToggle(
@@ -568,6 +630,7 @@ fun MarkdownLiveEditor(
 
     LaunchedEffect(value) {
         if (fieldValue.text != value) {
+            reversibleToolbarEdit = null
             fieldValue = clampMarkdownTextFieldValueToBody(fieldValue, value)
             currentCursorDocumentId.value?.let { documentId ->
                 cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(fieldValue.selection))
@@ -651,6 +714,7 @@ fun MarkdownLiveEditor(
 
                             if (!canceled && (upPosition - down.position).getDistance() <= viewConfiguration.touchSlop) {
                                 val next = latestTextFieldValue.value.copy(selection = TextRange(0))
+                                reversibleToolbarEdit = null
                                 fieldValue = next
                                 onTextFieldValueObserved(next)
                                 focusRequester.requestFocus()
@@ -727,6 +791,7 @@ fun MarkdownLiveEditor(
 
                             if (!canceled && (upPosition - down.position).getDistance() <= viewConfiguration.touchSlop) {
                                 if (checkbox != null) {
+                                    reversibleToolbarEdit = null
                                     selectionRestoreAfterTap = selectionAtDown
                                     if (fieldValue.selection != selectionAtDown) {
                                         fieldValue = fieldValue.copy(selection = selectionAtDown)
@@ -734,6 +799,7 @@ fun MarkdownLiveEditor(
                                     }
                                     toggleCheckbox.value(checkbox.sourceStart)
                                 } else if (link != null) {
+                                    reversibleToolbarEdit = null
                                     selectionRestoreAfterTap = selectionAtDown
                                     if (fieldValue.selection != selectionAtDown) {
                                         fieldValue = fieldValue.copy(selection = selectionAtDown)
@@ -748,6 +814,7 @@ fun MarkdownLiveEditor(
                 BasicTextField(
                     value = fieldValue,
                     onValueChange = {
+                        reversibleToolbarEdit = null
                         val previousText = fieldValue.text
                         if (staleTextAfterCheckboxToggle == it.text && it.text != previousText) {
                             staleTextAfterCheckboxToggle = null
@@ -778,6 +845,7 @@ fun MarkdownLiveEditor(
                         }
                         .onFocusChanged {
                             hasFocus = it.isFocused
+                            if (!it.isFocused) reversibleToolbarEdit = null
                             onBodyFocusChanged?.invoke(it.isFocused)
                         },
                     decorationBox = { innerTextField ->
@@ -795,11 +863,13 @@ fun MarkdownLiveEditor(
         if (toolbarVisible) {
             MarkdownImeToolbar(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp).testTag("markdown-ime-toolbar"),
-                fieldValue = fieldValue,
-                onValueChange = { next ->
-                    fieldValue = next
-                    onValueChange(next.text)
-                    onTextFieldValueObserved(next)
+                onAction = { action ->
+                    val result = applyMarkdownToolbarAction(fieldValue, action, reversibleToolbarEdit)
+                    reversibleToolbarEdit = result.reversibleEdit
+                    selectionRestoreAfterTap = null
+                    fieldValue = result.value
+                    onValueChange(result.value.text)
+                    onTextFieldValueObserved(result.value)
                     focusRequester.requestFocus()
                     keyboardController?.show()
                 },
@@ -860,7 +930,7 @@ private fun MarkdownLineNumberGutter(
             visibleNumbers.forEach { placement ->
                 Text(
                     text = placement.lineNumber.toString(),
-                    color = TaskChuteColors.SecondaryText,
+                    color = markdownLineNumberTint(),
                     fontSize = 12.sp,
                     textAlign = TextAlign.End,
                     maxLines = 1,
@@ -886,6 +956,8 @@ private fun MarkdownLineNumberGutter(
         }
     }
 }
+
+internal fun markdownLineNumberTint(): Color = TaskChuteColors.SecondaryText.copy(alpha = 0.8f)
 
 private data class MarkdownLineNumberPlacement(val lineNumber: Int, val baselinePx: Float)
 
@@ -927,8 +999,7 @@ private fun visibleMarkdownLineNumberPlacements(
 @Composable
 internal fun MarkdownImeToolbar(
     modifier: Modifier,
-    fieldValue: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
+    onAction: (MarkdownToolbarActionId) -> Unit,
 ) {
     Row(
         modifier = modifier.padding(horizontal = 4.dp),
@@ -936,22 +1007,22 @@ internal fun MarkdownImeToolbar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MarkdownToolbarAction(R.drawable.ic_material_format_bold_24, "太字", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::bold, onValueChange)
+            onAction(MarkdownToolbarActionId.BOLD)
         }
         MarkdownToolbarAction(R.drawable.ic_material_format_h1_24, "見出し", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::heading, onValueChange)
+            onAction(MarkdownToolbarActionId.HEADING)
         }
         MarkdownToolbarAction(R.drawable.ic_material_format_list_bulleted_24, "箇条書き", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::bullet, onValueChange)
+            onAction(MarkdownToolbarActionId.BULLET)
         }
         MarkdownToolbarAction(R.drawable.ic_material_checklist_24, "チェックリスト", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::checkbox, onValueChange)
+            onAction(MarkdownToolbarActionId.CHECKBOX)
         }
         MarkdownToolbarAction(R.drawable.ic_material_format_quote_24, "引用", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::quote, onValueChange)
+            onAction(MarkdownToolbarActionId.QUOTE)
         }
         MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(44.dp)) {
-            applyMarkdownCommand(fieldValue, MarkdownEditCommands::link, onValueChange)
+            onAction(MarkdownToolbarActionId.LINK)
         }
     }
 }
@@ -974,25 +1045,4 @@ private fun MarkdownToolbarAction(
             tint = TaskChuteColors.PrimaryText,
         )
     }
-}
-
-private fun applyMarkdownCommand(
-    fieldValue: TextFieldValue,
-    command: (String, MarkdownSelection) -> MarkdownEditResult,
-    onValueChange: (TextFieldValue) -> Unit,
-) {
-    val result = command(
-        fieldValue.text,
-        MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
-    )
-    val composition = fieldValue.composition?.let {
-        TextRange(result.mapOffset(it.start), result.mapOffset(it.end))
-    }
-    onValueChange(
-        TextFieldValue(
-            text = result.text,
-            selection = TextRange(result.selection.start, result.selection.end),
-            composition = composition,
-        ),
-    )
 }

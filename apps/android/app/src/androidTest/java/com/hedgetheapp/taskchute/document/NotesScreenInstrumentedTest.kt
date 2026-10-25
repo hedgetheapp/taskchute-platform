@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -403,10 +404,14 @@ class NotesScreenInstrumentedTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
                 Box(Modifier.width(360.dp).height(48.dp)) {
+                    val previousEdit = remember { mutableStateOf<ReversibleMarkdownToolbarEdit?>(null) }
                     MarkdownImeToolbar(
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        fieldValue = latest.value,
-                        onValueChange = { latest.value = it },
+                        onAction = { action ->
+                            val result = applyMarkdownToolbarAction(latest.value, action, previousEdit.value)
+                            previousEdit.value = result.reversibleEdit
+                            latest.value = result.value
+                        },
                     )
                 }
             }
@@ -455,6 +460,165 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("リンク").performClick()
         assertEquals("[OpenAI](https://)", latest.value.text)
         assertEquals(TextRange(9, 17), latest.value.selection)
+    }
+
+    @Test
+    fun markdownEditorToolbarDoubleTapRevertsBoldHeadingAndLink() {
+        val body = mutableStateOf("")
+        val sessionKey = mutableStateOf<Any>("bold")
+        val latest = mutableStateOf(TextFieldValue(""))
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    MarkdownLiveEditor(
+                        value = body.value,
+                        onValueChange = { body.value = it },
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize(),
+                        onTextFieldValueChange = { latest.value = it },
+                        editorSessionKey = sessionKey.value,
+                    )
+                }
+            }
+        }
+        val focusBody = {
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+        }
+
+        focusBody()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("****", body.value)
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("", body.value)
+        assertEquals(TextRange(0), latest.value.selection)
+
+        composeRule.onNodeWithContentDescription("見出し").performClick()
+        assertEquals("# ", body.value)
+        composeRule.onNodeWithContentDescription("見出し").performClick()
+        assertEquals("", body.value)
+
+        composeRule.onNodeWithContentDescription("リンク").performClick()
+        assertEquals("[](https://)", body.value)
+        composeRule.onNodeWithContentDescription("リンク").performClick()
+        assertEquals("", body.value)
+        assertEquals(TextRange(0), latest.value.selection)
+    }
+
+    @Test
+    fun markdownEditorToolbarDoesNotUndoTextEnteredAfterFirstAction() {
+        val body = mutableStateOf("")
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    MarkdownLiveEditor(
+                        value = body.value,
+                        onValueChange = { body.value = it },
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInput("あ")
+        composeRule.waitForIdle()
+        assertEquals("**あ**", body.value)
+
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertTrue("the second press keeps intervening user input", body.value.contains("あ"))
+    }
+
+    @Test
+    fun markdownEditorToolbarUndoDoesNotCrossEditorSessionsOrExternalBodyChanges() {
+        val body = mutableStateOf("")
+        val sessionKey = mutableStateOf<Any>("first-session")
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    MarkdownLiveEditor(
+                        value = body.value,
+                        onValueChange = { body.value = it },
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize(),
+                        editorSessionKey = sessionKey.value,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("****", body.value)
+
+        sessionKey.value = "second-session"
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("a new editor session gets a fresh action", "********", body.value)
+
+        body.value = "external canonical body"
+        composeRule.waitForIdle()
+        body.value = "********"
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("external source updates invalidate the previous snapshot", "************", body.value)
+    }
+
+    @Test
+    fun markdownEditorToolbarUndoIsInvalidatedWhenSelectionMovesAwayAndBack() {
+        val body = mutableStateOf("")
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    MarkdownLiveEditor(
+                        value = body.value,
+                        onValueChange = { body.value = it },
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+        assertEquals("****", body.value)
+
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(0))
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(2))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("太字").performClick()
+
+        assertEquals("a selection move must revoke undo even when the caret returns", "********", body.value)
     }
 
     @Test
