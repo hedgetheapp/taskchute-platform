@@ -3,8 +3,9 @@ package com.hedgetheapp.taskchute.widget
 import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Rect
-import android.graphics.drawable.LayerDrawable
 import android.view.View
 import android.widget.Chronometer
 import android.widget.FrameLayout
@@ -61,6 +62,41 @@ class AndroidHomeWidgetInstrumentedTest {
         assertFalse(actionReceiver.exported)
         assertFalse(boundaryReceiver.exported)
         assertFalse(boundaryRestoreReceiver.exported)
+    }
+
+    @Test
+    fun providerRequestsFourByTwoCellsAndKeepsLegacyMinimumDimensions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val parser = context.resources.getXml(R.xml.taskchute_home_widget_info)
+        val androidNamespace = "http://schemas.android.com/apk/res/android"
+        try {
+            while (parser.eventType != org.xmlpull.v1.XmlPullParser.START_TAG &&
+                parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT
+            ) {
+                // Advance to appwidget-provider.
+            }
+            assertEquals("appwidget-provider", parser.name)
+            assertEquals(4, parser.getAttributeIntValue(androidNamespace, "targetCellWidth", 0))
+            assertEquals(2, parser.getAttributeIntValue(androidNamespace, "targetCellHeight", 0))
+            assertEquals(
+                280,
+                parser.getAttributeValue(androidNamespace, "minWidth")!!
+                    .removeSuffix("dip")
+                    .removeSuffix("dp")
+                    .toFloat()
+                    .roundToInt(),
+            )
+            assertEquals(
+                200,
+                parser.getAttributeValue(androidNamespace, "minHeight")!!
+                    .removeSuffix("dip")
+                    .removeSuffix("dp")
+                    .toFloat()
+                    .roundToInt(),
+            )
+        } finally {
+            parser.close()
+        }
     }
 
     @Test
@@ -389,17 +425,21 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
-    fun compactSurfaceKeepsOneHeightAcrossLifecycleStatesAtNarrowWidth() {
+    fun visibleSurfaceTracksHostBoundsAcrossLifecycleStates() {
         val baseContext = InstrumentationRegistry.getInstrumentation().targetContext
         val scenarios = listOf(
-            1.0f to 188,
-            1.0f to 220,
-            1.3f to 188,
-            1.3f to 240,
+            Triple(1.0f, 280, 200),
+            Triple(1.0f, 280, 220),
+            Triple(1.0f, 280, 240),
+            Triple(1.3f, 280, 200),
+            Triple(1.3f, 280, 220),
+            Triple(1.3f, 280, 240),
+            Triple(1.0f, 240, 200),
+            Triple(1.3f, 240, 220),
         )
         val longTitle = "A very long running task title that should truncate without covering actions"
 
-        scenarios.forEachIndexed { index, (fontScale, heightDp) ->
+        scenarios.forEachIndexed { index, (fontScale, widthDp, heightDp) ->
             val configuration = Configuration(baseContext.resources.configuration).apply {
                 this.fontScale = fontScale
             }
@@ -414,6 +454,11 @@ class AndroidHomeWidgetInstrumentedTest {
                     context,
                     190 + index,
                     canonicalRunningState("execution", startedAt = "2026-10-07T09:00:00Z"),
+                ),
+                AndroidHomeWidgetRenderer.contentViews(
+                    context,
+                    190 + index,
+                    canonicalRunningState("execution", startedAt = "2026-10-07T08:30:00Z"),
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
@@ -455,12 +500,13 @@ class AndroidHomeWidgetInstrumentedTest {
                     setTextViewText(R.id.home_widget_status, "サインインが必要です")
                 },
             )
-            val widget = attachMeasured(context, views.first(), widthDp = 280, heightDp = heightDp)
+            val widget = attachMeasured(context, views.first(), widthDp = widthDp, heightDp = heightDp)
             val density = context.resources.displayMetrics.density
-            val expectedWidth = (280f * density).roundToInt()
+            val expectedWidth = (widthDp * density).roundToInt()
             val expectedHeight = (heightDp * density).roundToInt()
-            val expectedSurfaceHeight = (188f * density).roundToInt()
             val contentContainer = widget.root.findViewById<LinearLayout>(R.id.home_widget_surface_content)
+            val surfaceBitmap = Bitmap.createBitmap(expectedWidth, expectedHeight, Bitmap.Config.ARGB_8888)
+            val surfaceCanvas = Canvas(surfaceBitmap)
 
             views.forEachIndexed { stateIndex, remoteViews ->
                 if (stateIndex > 0) {
@@ -470,13 +516,17 @@ class AndroidHomeWidgetInstrumentedTest {
                 assertEquals("root width at fontScale=$fontScale state=$stateIndex", expectedWidth, widget.root.width)
                 assertEquals("root height at fontScale=$fontScale state=$stateIndex", expectedHeight, widget.root.height)
                 assertEquals("content frame width at fontScale=$fontScale state=$stateIndex", expectedWidth, contentContainer.width)
-                assertEquals("content frame height at fontScale=$fontScale state=$stateIndex", expectedSurfaceHeight, contentContainer.height)
+                assertEquals("content frame height at fontScale=$fontScale state=$stateIndex", expectedHeight, contentContainer.height)
                 assertEquals("content frame must start at the top of the launcher allocation", 0, contentContainer.top)
-                val background = widget.root.background as LayerDrawable
-                val surfaceBounds = background.getDrawable(0).bounds
+                // A View applies background drawable bounds during drawing, not measurement.
+                widget.root.draw(surfaceCanvas)
+                val surfaceBounds = widget.root.background.bounds
                 assertEquals("surface width at fontScale=$fontScale state=$stateIndex", expectedWidth, surfaceBounds.width())
-                assertEquals("surface height at fontScale=$fontScale state=$stateIndex", expectedSurfaceHeight, surfaceBounds.height())
-                assertTrue("surface must fit the launcher allocation", surfaceBounds.bottom <= widget.root.height)
+                assertEquals("surface height at fontScale=$fontScale state=$stateIndex", expectedHeight, surfaceBounds.height())
+                assertEquals("surface must reach the launcher allocation bottom", expectedHeight, surfaceBounds.bottom)
+                val expectedBackground = context.getColor(R.color.home_widget_background)
+                assertEquals(expectedBackground, surfaceBitmap.getPixel(expectedWidth / 2, 0))
+                assertEquals(expectedBackground, surfaceBitmap.getPixel(expectedWidth / 2, expectedHeight - 1))
                 assertVisibleContentBalanced(
                     widget.root as ViewGroup,
                     contentContainer,
@@ -498,20 +548,25 @@ class AndroidHomeWidgetInstrumentedTest {
                     val runningCard = widget.root.findViewById<View>(R.id.home_widget_running_card)
                     assertEquals(
                         runningCard.top + runningCard.height / 2,
-                        complete.top + complete.height / 2,
+                        runningCard.top + complete.top + complete.height / 2,
                     )
-                    val nextBounds = Rect()
-                    (widget.root as ViewGroup).offsetDescendantRectToMyCoords(
-                        widget.root.findViewById(R.id.home_widget_running_next_row),
+                    val nextRow = widget.root.findViewById<View>(R.id.home_widget_running_next_row)
+                    val nextBounds = Rect(0, 0, nextRow.width, nextRow.height)
+                    widget.root.offsetDescendantRectToMyCoords(
+                        nextRow,
                         nextBounds,
                     )
-                    assertTrue(nextBounds.bottom <= surfaceBounds.bottom - contentContainer.paddingBottom)
+                    assertTrue(
+                        "next preview must fit at fontScale=$fontScale height=$heightDp state=$stateIndex " +
+                            "(next=$nextBounds surface=$surfaceBounds paddingBottom=${contentContainer.paddingBottom})",
+                        nextBounds.bottom <= surfaceBounds.bottom - contentContainer.paddingBottom,
+                    )
                 }
 
                 val idleRow = widget.root.findViewById<View>(R.id.home_widget_idle_task_row)
                 val idleContent = widget.root.findViewById<View>(R.id.home_widget_idle_content)
                 if (idleContent.visibility == View.VISIBLE) {
-                    assertTrue("Idle content must fit within the fixed surface", idleContent.bottom <= surfaceBounds.bottom)
+                    assertTrue("Idle content must fit within the host-aligned surface", idleContent.bottom <= surfaceBounds.bottom)
                 }
                 if (idleContent.visibility == View.VISIBLE && idleRow.visibility == View.VISIBLE) {
                     val title = widget.root.findViewById<View>(R.id.home_widget_idle_task_title)
@@ -530,7 +585,7 @@ class AndroidHomeWidgetInstrumentedTest {
                 val status = widget.root.findViewById<View>(R.id.home_widget_status)
                 if (status.visibility == View.VISIBLE) {
                     assertTrue("status text must fit its minimum row", status.height >= (64f * density).roundToInt())
-                    assertTrue("status must remain within the fixed surface", status.bottom <= surfaceBounds.bottom)
+                    assertTrue("status must remain within the host-aligned surface", status.bottom <= surfaceBounds.bottom)
                 }
             }
         }
@@ -549,13 +604,16 @@ class AndroidHomeWidgetInstrumentedTest {
         assertTrue("$label must have a visible content group", visibleChildren.isNotEmpty())
 
         val childBounds = visibleChildren.map { child ->
-            Rect().also { root.offsetDescendantRectToMyCoords(child, it) }
+            Rect(0, 0, child.width, child.height).also { root.offsetDescendantRectToMyCoords(child, it) }
+        }
+        val childSummary = visibleChildren.zip(childBounds).joinToString { (child, bounds) ->
+            "id=${child.id} top=${bounds.top} bottom=${bounds.bottom} measured=${child.measuredHeight} layout=${child.top}..${child.bottom}"
         }
         val topGap = childBounds.minOf { it.top } - surfaceBounds.top
         val bottomGap = surfaceBounds.bottom - childBounds.maxOf { it.bottom }
-        assertTrue("$label content must stay inside the fixed frame", topGap >= 0 && bottomGap >= 0)
+        assertTrue("$label content must stay inside the host-aligned frame", topGap >= 0 && bottomGap >= 0)
         assertTrue(
-            "$label content should be vertically balanced (top=$topGap, bottom=$bottomGap)",
+            "$label content should be vertically balanced (top=$topGap, bottom=$bottomGap, surface=$surfaceBounds, children=$childSummary)",
             abs(topGap - bottomGap) <= (8f * density).roundToInt(),
         )
     }
