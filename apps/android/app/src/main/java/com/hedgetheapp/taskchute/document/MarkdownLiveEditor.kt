@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
+import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 
 data class MarkdownSelection(val start: Int, val end: Int) {
@@ -685,22 +688,22 @@ internal fun MarkdownImeToolbar(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MarkdownToolbarAction("B", "太字", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_bold_24, "太字", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::bold, onValueChange)
         }
-        MarkdownToolbarAction("H", "見出し", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_h1_24, "見出し", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::heading, onValueChange)
         }
-        MarkdownToolbarAction("•", "箇条書き", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_list_bulleted_24, "箇条書き", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::bullet, onValueChange)
         }
-        MarkdownToolbarAction("☐", "チェックリスト", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_checklist_24, "チェックリスト", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::checkbox, onValueChange)
         }
-        MarkdownToolbarAction("❯", "引用", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_quote_24, "引用", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::quote, onValueChange)
         }
-        MarkdownToolbarAction("↗", "リンク", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(48.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::link, onValueChange)
         }
     }
@@ -708,7 +711,7 @@ internal fun MarkdownImeToolbar(
 
 @Composable
 private fun MarkdownToolbarAction(
-    label: String,
+    iconResource: Int,
     description: String,
     modifier: Modifier,
     onClick: () -> Unit,
@@ -717,7 +720,12 @@ private fun MarkdownToolbarAction(
         onClick = onClick,
         modifier = modifier.size(44.dp).focusProperties { canFocus = false }.semantics { contentDescription = description },
     ) {
-        Text(label, color = TaskChuteColors.PrimaryText, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Icon(
+            painter = painterResource(iconResource),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = TaskChuteColors.PrimaryText,
+        )
     }
 }
 

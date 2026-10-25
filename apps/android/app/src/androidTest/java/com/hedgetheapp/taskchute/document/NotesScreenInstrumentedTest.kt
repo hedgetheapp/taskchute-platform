@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -375,12 +376,12 @@ class NotesScreenInstrumentedTest {
 
     @Test
     fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
-        var latest = TextFieldValue("live", selection = TextRange(0, 4))
+        val latest = mutableStateOf(TextFieldValue("live", selection = TextRange(0, 4)))
         composeRule.setContent {
             MarkdownImeToolbar(
                 modifier = Modifier.fillMaxWidth(),
-                fieldValue = latest,
-                onValueChange = { latest = it },
+                fieldValue = latest.value,
+                onValueChange = { latest.value = it },
             )
         }
 
@@ -392,8 +393,29 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("\u30ea\u30f3\u30af").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("\u592a\u5b57").performClick()
-        assertEquals("**live**", latest.text)
-        assertEquals(TextRange(2, 6), latest.selection)
+        assertEquals("**live**", latest.value.text)
+        assertEquals(TextRange(2, 6), latest.value.selection)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("heading") }
+        composeRule.onNodeWithContentDescription("見出し").performClick()
+        assertEquals("# heading", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("bullet") }
+        composeRule.onNodeWithContentDescription("箇条書き").performClick()
+        assertEquals("- bullet", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("check") }
+        composeRule.onNodeWithContentDescription("チェックリスト").performClick()
+        assertEquals("- [ ] check", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("quote") }
+        composeRule.onNodeWithContentDescription("引用").performClick()
+        assertEquals("> quote", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("OpenAI", selection = TextRange(0, 6)) }
+        composeRule.onNodeWithContentDescription("リンク").performClick()
+        assertEquals("[OpenAI](https://)", latest.value.text)
+        assertEquals(TextRange(9, 17), latest.value.selection)
     }
 
     @Test
