@@ -1,6 +1,6 @@
 # D-177 — Android Home Widget v0.1
 
-Status: **Approved / Implemented / Exact-SHA CI PASS / Local AVD ENV_BLOCKED / Product Owner device verification pending**
+Status: **Approved / Implemented / Exact-SHA CI PASS / API 33 focused Widget runtime PASS / Galaxy S23 Product Owner device verification pending**
 
 Date: 2026-10-07
 
@@ -308,3 +308,15 @@ The user reported that Widget Complete could not be tapped after Widget Start. S
 Regression instrumentation applies optimistic Start and reapplies canonical Running, then checks the enabled state separately from listener presence and repeats canonical reapply. It also checks optimistic `performClick()` is rejected, canonical Running without an Execution stays hidden/disabled, and an invalid canonical state clears a pending Complete. The instrumentation source compiled but was **not executed**; no ADB/emulator was launched. `AndroidHomeWidgetLogicTest` passes `34 / 34`; `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, and `git diff --check` pass.
 
 Implementation `a88b708d52464157b1d10469b30af5f312041560` is on `main`. Exact-SHA [GitHub Actions run 40097247354](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40097247354) passed on attempt 1 for Android JVM tests, signed Phone/Wear debug APKs, AndroidTest APK compilation, signer verification, and artifact uploads; Web/Worker was skipped by Android-only classification. Phone artifact `taskchute-android-debug-a88b708d52464157b1d10469b30af5f312041560` / ID `12561765678` (expires `2026-10-31`): package `com.hedgetheapp.taskchute`, versionCode `1287`, directly measured APK SHA-256 `88E2B14E4F9C3FD4B409F3848F80AF1920077B611F57A922DDB7C18EC8E6302F`, artifact ZIP SHA-256 `CC39E7C09FD1A63B7B36E7CE0859469667BC7A122E6497E5E508FB801999FEE1`, signer SHA-256 `690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3`. Local APK package, versionCode, signature and APK digest were checked from the downloaded artifact. Galaxy S23 retest remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Product Verified `NO`, Production `NOT_RUN`, Released `NO`.
+
+## Launcher allocation and initial-cell sizing corrective — 2026-10-25
+
+This corrective resolves the trial's fixed-height mismatch while preserving D-177's approved Running and Idle two-slot content, lifecycle transitions, canonical action gates, and 48 dp controls. It does not approve a one-row design or any new Widget behavior.
+
+- The provider requests `targetCellWidth=4` and `targetCellHeight=2` on Android 12+; legacy `minWidth=280dp` and `minHeight=200dp` remain for Android 11 and lower. Android's sizing guidance defines target cells as the default size when the Widget is added and notes that actual cell sizing and margins vary by host. [Official sizing guidance](https://developer.android.com/develop/ui/views/appwidgets/layouts).
+- The root, content frame, and rounded background now follow the host allocation. Before this change, the fixed 188 dp content/background left 32 dp and 52 dp of unused frame at 220 dp and 240 dp host heights, and the 188 dp notice/preview case clipped by about 5 dp in API 33 instrumentation.
+- The minimum frame is now 200 dp. Only spacing was reduced to fit the most constrained tested Running notice/preview state at fontScale 1.3; title/time/action/preview sizes and the two-slot model remain intact.
+- API 33 `TaskChute_API33` instrumentation passes `13 / 13`. Synthetic host bounds covered widths 240/280 dp, heights 200/220/240 dp, fontScale 1.0/1.3, Running with long title, estimate/no estimate, overrun, notice, optimistic Start/Complete, Idle two/one/zero slots, and status. Root/content/background bounds matched the tested allocation; 48 dp actions and preview fit checks passed.
+- The 4x2 value is the requested default cell span, not a measured Galaxy S23 result. The old provider had no target-cell values, so its actual previous row/column count is unknown. Galaxy S23 / One UI allocation, adjacent icon placement, and action smoke remain `NOT_RUN / PRODUCT_OWNER_MANUAL`; do not claim exact cells from the AVD tests. To exercise the new default placement on an existing installation, remove and re-add the Widget because target cells define default size when it is added. Existing instances still render into their host-provided bounds.
+
+Implementation `19db70d8006329dd53cc48d0e8b5cd470cb8c8b0` is on `main`. Exact-SHA Android CI passed Android JVM tests, signed Phone/Wear builds, AndroidTest APK compilation, signing checks and artifact upload; Web/Worker was skipped for Android-only impact. Current run and Phone artifact identity are reported in the handoff because GitHub keeps those volatile details. Product Verified remains `NO`; Production is `NOT_RUN`; Released remains `NO`.
