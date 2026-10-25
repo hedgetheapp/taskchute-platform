@@ -1,5 +1,6 @@
 package com.hedgetheapp.taskchute.widget
 
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.os.Build
 import android.content.res.Configuration
@@ -67,7 +68,7 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
-    fun providerRequestsTwoByTwoCellsAndSupportsNarrowLegacyDimensions() {
+    fun providerRequestsFourByTwoCellsAndSupportsTwoColumnResize() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val parser = context.resources.getXml(R.xml.taskchute_home_widget_info)
         val androidNamespace = "http://schemas.android.com/apk/res/android"
@@ -78,10 +79,18 @@ class AndroidHomeWidgetInstrumentedTest {
                 // Advance to appwidget-provider.
             }
             assertEquals("appwidget-provider", parser.name)
-            assertEquals(2, parser.getAttributeIntValue(androidNamespace, "targetCellWidth", 0))
+            assertEquals(4, parser.getAttributeIntValue(androidNamespace, "targetCellWidth", 0))
             assertEquals(2, parser.getAttributeIntValue(androidNamespace, "targetCellHeight", 0))
             assertEquals(
-                130,
+                R.layout.taskchute_home_widget_landscape,
+                parser.getAttributeResourceValue(androidNamespace, "initialLayout", 0),
+            )
+            assertEquals(
+                AppWidgetProviderInfo.RESIZE_BOTH,
+                parser.getAttributeIntValue(androidNamespace, "resizeMode", 0),
+            )
+            assertEquals(
+                280,
                 parser.getAttributeValue(androidNamespace, "minWidth")!!
                     .removeSuffix("dip")
                     .removeSuffix("dp")
