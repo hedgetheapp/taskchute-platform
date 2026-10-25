@@ -2708,9 +2708,13 @@ Production Firebase/credentials/deploy remain unapproved and `NOT_RUN`.
 
 ## D-177 — Android Home Widget v0.1
 
-Status: **Approved / Implemented at source SHA `2996cc6a3ade721f9887ac6c37804f2d704d9e03` / Galaxy S23 NOT_RUN / Product Verified NO / Released NO**
+Status: **Approved / 2x2 responsive visual refinement implemented at source SHA `fb67da20a5e48b9f997822969cd0021b7be9ba5d` / Galaxy S23 NOT_RUN / Product Verified NO / Released NO**
 
 Canonical Decision: `docs/decisions/D-177_ANDROID_HOME_WIDGET_V01.md`.
+
+### D-177 2x2 responsive layout refinement — 2026-10-25
+
+The Product Owner's task contract approves the Phone Widget's 2x2 initial span and responsive compact presentation for the existing D-177 two-slot behavior. Android 12+ uses the host-provided size list to select compact vertical, compact horizontal for wide/short bounds, or the existing detailed layout. Earlier provider sizing values are superseded: `targetCellWidth/Height` are 2/2, legacy minimums are 130x117dp, and resize minimums are 110x117dp. This changes layout and initial placement only; projection, timer, canonical action authority, optimistic reconciliation, and 48dp lifecycle controls are unchanged. Android host geometry varies; see [Android sizing guidance](https://developer.android.com/develop/ui/views/appwidgets/layouts). Implementation and verification evidence are recorded in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`; Galaxy S23 remains unverified.
 
 D-177 defines the first Android home-screen Widget as a compact current-Day execution surface. Running shows the current Task with elapsed / estimate / progress and the next Planned Task; after canonical Complete the completed Task disappears and the next Planned Task is promoted. Idle Start and Running Complete execute directly from the Widget using the existing encrypted Android Better Auth session and existing Today HTTP commands, without opening the app UI. The existing single-active-Execution invariant remains authoritative, so next-task Start is not dispatched while another Execution is active. No new API/schema/migration, foreground service, persistent background socket, minute server polling, Phone FCM requirement, or long-term dependency is approved.
 

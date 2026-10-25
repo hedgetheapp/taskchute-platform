@@ -471,7 +471,7 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
 - D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
-- D-177より後のAndroid Widget scope（resize/layout variants、より広いTask list、date navigation、Quick Add、Notes、cross-client即時push/realtime等）
+- D-177より後のAndroid Widget scope（より広いTask list、date navigation、Quick Add、Notes、cross-client即時push/realtime等）。現行のtwo-slot Widget向け2x2 responsive layout variantsは2026-10-25の実装で解決済み
 - D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile、Location、offline / background realtime等）。Complication first sliceはD-158でApproved済み
 - D-159のevent-driven Wear Running projection transportはD-160でdirect FCM v0.1として解決済み。残るOpenは、将来のkeyless sender authenticationへの置換、tokenの長期stale-age cleanup policy、multi-Watch管理UX、production Firebase/IAM導入時期、Doze下の実測latency改善可否である。
 - Wear OS public distribution時のstandalone metadata / iOS-paired watch対応。D-154 v0.1はAndroid companion-assisted initial auth + post-pair Server-direct runtimeまでをApproved
