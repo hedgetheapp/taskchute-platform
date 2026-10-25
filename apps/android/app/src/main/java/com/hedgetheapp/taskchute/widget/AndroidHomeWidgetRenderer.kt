@@ -6,7 +6,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
+import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
 import com.hedgetheapp.taskchute.MainActivity
@@ -14,6 +17,9 @@ import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.today.TodayTask
 
 internal object AndroidHomeWidgetRenderer {
+    private const val DEFAULT_NARROW_WIDTH_DP = 130f
+    private const val DEFAULT_PORTRAIT_HEIGHT_DP = 220f
+
     fun loading(context: Context, widgetId: Int) {
         renderStatus(context, widgetId, R.string.home_widget_loading)
     }
@@ -31,14 +37,17 @@ internal object AndroidHomeWidgetRenderer {
         widgetId: Int,
         presentation: AndroidHomeWidgetOptimisticPresentation,
     ) {
-        val views = optimisticViews(context, presentation)
+        val views = responsiveViews(context, widgetId) { layoutId ->
+            optimisticViews(context, presentation, layoutId)
+        }
         AppWidgetManager.getInstance(context).partiallyUpdateAppWidget(widgetId, views)
     }
 
     internal fun optimisticViews(
         context: Context,
         presentation: AndroidHomeWidgetOptimisticPresentation,
-    ): RemoteViews = RemoteViews(context.packageName, R.layout.taskchute_home_widget).apply {
+        layoutId: Int = R.layout.taskchute_home_widget,
+    ): RemoteViews = RemoteViews(context.packageName, layoutId).apply {
         setViewVisibility(R.id.home_widget_notice, View.GONE)
         setViewVisibility(R.id.home_widget_running_label, View.VISIBLE)
         setViewVisibility(R.id.home_widget_status, View.GONE)
@@ -146,11 +155,11 @@ internal object AndroidHomeWidgetRenderer {
     }
 
     private fun renderStatus(context: Context, widgetId: Int, messageRes: Int) {
-        update(context, widgetId, statusViews(context, widgetId, messageRes))
+        update(context, widgetId) { layoutId -> statusViews(context, widgetId, messageRes, layoutId) }
     }
 
-    private fun statusViews(context: Context, widgetId: Int, messageRes: Int): RemoteViews =
-        baseViews(context, widgetId).apply {
+    private fun statusViews(context: Context, widgetId: Int, messageRes: Int, layoutId: Int): RemoteViews =
+        baseViews(context, widgetId, layoutId).apply {
             setViewVisibility(R.id.home_widget_running_content, View.GONE)
             setViewVisibility(R.id.home_widget_idle_content, View.GONE)
             setViewVisibility(R.id.home_widget_notice, View.GONE)
@@ -167,24 +176,29 @@ internal object AndroidHomeWidgetRenderer {
         }
 
     private fun renderContent(context: Context, widgetId: Int, state: AndroidHomeWidgetState.Content) {
-        update(context, widgetId, contentViews(context, widgetId, state))
+        update(context, widgetId) { layoutId -> contentViews(context, widgetId, state, layoutId) }
     }
 
     internal fun contentViews(
         context: Context,
         widgetId: Int,
         state: AndroidHomeWidgetState.Content,
+        layoutId: Int = R.layout.taskchute_home_widget,
     ): RemoteViews {
         if (state.projection is AndroidHomeWidgetProjection.InvalidActiveState) {
-            return statusViews(context, widgetId, R.string.home_widget_unavailable)
+            return statusViews(context, widgetId, R.string.home_widget_unavailable, layoutId)
         }
 
-        val views = baseViews(context, widgetId)
+        val views = baseViews(context, widgetId, layoutId)
         state.notice?.let { notice ->
             views.setViewVisibility(R.id.home_widget_notice, View.VISIBLE)
             views.setTextViewText(R.id.home_widget_notice, notice)
+            views.setContentDescription(R.id.home_widget_notice, notice)
             views.setViewVisibility(R.id.home_widget_running_label, View.GONE)
-        } ?: views.setViewVisibility(R.id.home_widget_notice, View.GONE)
+        } ?: run {
+            views.setViewVisibility(R.id.home_widget_notice, View.GONE)
+            views.setContentDescription(R.id.home_widget_notice, null)
+        }
         if (state.notice == null) {
             views.setViewVisibility(R.id.home_widget_running_label, View.VISIBLE)
         }
@@ -345,7 +359,7 @@ internal object AndroidHomeWidgetRenderer {
             }
 
             AndroidHomeWidgetProjection.InvalidActiveState -> {
-                return statusViews(context, widgetId, R.string.home_widget_unavailable)
+                return statusViews(context, widgetId, R.string.home_widget_unavailable, layoutId)
             }
         }
         return views
@@ -388,13 +402,57 @@ internal object AndroidHomeWidgetRenderer {
         metadata = formatAndroidHomeWidgetPlannedMetadata(this),
     )
 
-    private fun baseViews(context: Context, widgetId: Int): RemoteViews =
-        RemoteViews(context.packageName, R.layout.taskchute_home_widget).apply {
+    private fun baseViews(context: Context, widgetId: Int, layoutId: Int): RemoteViews =
+        RemoteViews(context.packageName, layoutId).apply {
             setOnClickPendingIntent(R.id.home_widget_root, AndroidHomeWidgetIntents.openAppPendingIntent(context, widgetId))
         }
 
-    private fun update(context: Context, widgetId: Int, views: RemoteViews) {
-        AppWidgetManager.getInstance(context).updateAppWidget(widgetId, views)
+    private fun update(context: Context, widgetId: Int, createViews: (Int) -> RemoteViews) {
+        AppWidgetManager.getInstance(context).updateAppWidget(
+            widgetId,
+            responsiveViews(context, widgetId, createViews),
+        )
+    }
+
+    private fun responsiveViews(
+        context: Context,
+        widgetId: Int,
+        createViews: (Int) -> RemoteViews,
+    ): RemoteViews {
+        val options = runCatching {
+            AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+        }.getOrNull() ?: Bundle.EMPTY
+        val sizes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) appWidgetSizes(options) else null
+        if (!sizes.isNullOrEmpty()) {
+            remoteViewsForSizes(sizes, createViews)?.let { return it }
+        }
+
+        val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+            .takeIf { it > 0 }?.toFloat() ?: DEFAULT_NARROW_WIDTH_DP
+        val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+            .takeIf { it > 0 }?.toFloat() ?: DEFAULT_PORTRAIT_HEIGHT_DP
+        return createViews(layoutForSize(width, height))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun appWidgetSizes(options: Bundle): List<SizeF>? =
+        options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+
+    private fun layoutForSize(widthDp: Float, heightDp: Float): Int =
+        when (androidHomeWidgetLayoutBucket(widthDp, heightDp)) {
+            AndroidHomeWidgetLayoutBucket.COMPACT -> R.layout.taskchute_home_widget_compact
+            AndroidHomeWidgetLayoutBucket.COMPACT_WIDE_SHORT -> R.layout.taskchute_home_widget_landscape
+            AndroidHomeWidgetLayoutBucket.DETAILED -> R.layout.taskchute_home_widget
+        }
+
+    internal fun remoteViewsForSizes(
+        sizes: List<SizeF>,
+        createViews: (Int) -> RemoteViews,
+    ): RemoteViews? {
+        val variants = sizes.distinct().associateWith { size ->
+            createViews(layoutForSize(size.width, size.height))
+        }
+        return if (variants.isEmpty()) null else RemoteViews(variants)
     }
 
 }

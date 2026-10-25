@@ -24,6 +24,16 @@ class AndroidHomeWidgetLogicTest {
     private val now = Instant.parse("2026-10-07T10:00:00Z")
 
     @Test
+    fun widgetLayoutBucketsUseAllocatedBoundsForPortraitAndLandscapeVariants() {
+        assertEquals(AndroidHomeWidgetLayoutBucket.COMPACT, androidHomeWidgetLayoutBucket(110f, 220f))
+        assertEquals(AndroidHomeWidgetLayoutBucket.COMPACT, androidHomeWidgetLayoutBucket(150f, 220f))
+        assertEquals(AndroidHomeWidgetLayoutBucket.COMPACT, androidHomeWidgetLayoutBucket(202f, 220f))
+        assertEquals(AndroidHomeWidgetLayoutBucket.DETAILED, androidHomeWidgetLayoutBucket(203f, 220f))
+        assertEquals(AndroidHomeWidgetLayoutBucket.DETAILED, androidHomeWidgetLayoutBucket(280f, 220f))
+        assertEquals(AndroidHomeWidgetLayoutBucket.COMPACT_WIDE_SHORT, androidHomeWidgetLayoutBucket(269f, 117f))
+    }
+
+    @Test
     fun idlePromotesFirstPlannedEntryAndExcludesCompletedEntries() {
         val day = day(
             tasks = listOf(

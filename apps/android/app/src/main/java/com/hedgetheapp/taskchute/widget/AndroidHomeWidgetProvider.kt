@@ -12,6 +12,16 @@ class AndroidHomeWidgetProvider : AppWidgetProvider() {
         AndroidHomeWidgetIntents.requestRefresh(context, appWidgetIds)
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: android.os.Bundle?,
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        AndroidHomeWidgetIntents.requestRefresh(context, intArrayOf(appWidgetId))
+    }
+
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         super.onDeleted(context, appWidgetIds)
         AndroidHomeWidgetBoundaryScheduler(context).cancelIfNoWidgets()

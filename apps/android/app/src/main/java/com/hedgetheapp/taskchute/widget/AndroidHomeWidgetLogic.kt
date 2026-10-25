@@ -33,6 +33,19 @@ internal sealed interface AndroidHomeWidgetProjection {
     data object InvalidActiveState : AndroidHomeWidgetProjection
 }
 
+internal enum class AndroidHomeWidgetLayoutBucket {
+    COMPACT,
+    COMPACT_WIDE_SHORT,
+    DETAILED,
+}
+
+internal fun androidHomeWidgetLayoutBucket(widthDp: Float, heightDp: Float): AndroidHomeWidgetLayoutBucket =
+    when {
+        widthDp < 203f -> AndroidHomeWidgetLayoutBucket.COMPACT
+        heightDp < 180f -> AndroidHomeWidgetLayoutBucket.COMPACT_WIDE_SHORT
+        else -> AndroidHomeWidgetLayoutBucket.DETAILED
+    }
+
 internal data class AndroidHomeWidgetRunningPresentation(
     val elapsedSeconds: Long?,
     val elapsedText: String,

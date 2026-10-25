@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.widget
 
 import android.content.ComponentName
+import android.os.Build
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -14,6 +15,7 @@ import android.widget.ProgressBar
 import android.widget.RemoteViews
 import android.widget.ImageView
 import android.view.ViewGroup
+import android.util.SizeF
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hedgetheapp.taskchute.R
@@ -65,7 +67,7 @@ class AndroidHomeWidgetInstrumentedTest {
     }
 
     @Test
-    fun providerRequestsFourByTwoCellsAndKeepsLegacyMinimumDimensions() {
+    fun providerRequestsTwoByTwoCellsAndSupportsNarrowLegacyDimensions() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val parser = context.resources.getXml(R.xml.taskchute_home_widget_info)
         val androidNamespace = "http://schemas.android.com/apk/res/android"
@@ -76,10 +78,10 @@ class AndroidHomeWidgetInstrumentedTest {
                 // Advance to appwidget-provider.
             }
             assertEquals("appwidget-provider", parser.name)
-            assertEquals(4, parser.getAttributeIntValue(androidNamespace, "targetCellWidth", 0))
+            assertEquals(2, parser.getAttributeIntValue(androidNamespace, "targetCellWidth", 0))
             assertEquals(2, parser.getAttributeIntValue(androidNamespace, "targetCellHeight", 0))
             assertEquals(
-                280,
+                130,
                 parser.getAttributeValue(androidNamespace, "minWidth")!!
                     .removeSuffix("dip")
                     .removeSuffix("dp")
@@ -87,8 +89,24 @@ class AndroidHomeWidgetInstrumentedTest {
                     .roundToInt(),
             )
             assertEquals(
-                200,
+                117,
                 parser.getAttributeValue(androidNamespace, "minHeight")!!
+                    .removeSuffix("dip")
+                    .removeSuffix("dp")
+                    .toFloat()
+                    .roundToInt(),
+            )
+            assertEquals(
+                110,
+                parser.getAttributeValue(androidNamespace, "minResizeWidth")!!
+                    .removeSuffix("dip")
+                    .removeSuffix("dp")
+                    .toFloat()
+                    .roundToInt(),
+            )
+            assertEquals(
+                117,
+                parser.getAttributeValue(androidNamespace, "minResizeHeight")!!
                     .removeSuffix("dip")
                     .removeSuffix("dp")
                     .toFloat()
@@ -121,6 +139,120 @@ class AndroidHomeWidgetInstrumentedTest {
         assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_complete_action))
         assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_idle_start_action))
         assertTrue(inflated.get().findViewById<Chronometer>(R.id.home_widget_remaining).isCountDown)
+    }
+
+    @Test
+    fun compactAndShortWideLayoutsInflateTheSameActionSurfaceIds() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        listOf(
+            R.layout.taskchute_home_widget_compact,
+            R.layout.taskchute_home_widget_landscape,
+        ).forEach { layoutId ->
+            val root = RemoteViews(context.packageName, layoutId).apply(context, FrameLayout(context))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_running_title))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_running_next_title))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_complete_action))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_idle_task_title))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_idle_following_title))
+            assertNotNull(root.findViewById<View>(R.id.home_widget_idle_start_action))
+        }
+    }
+
+    @Test
+    fun responsiveSizeMapBuildsCompactLandscapeAndDetailedRemoteViews() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val sizes = listOf(SizeF(130f, 220f), SizeF(269f, 117f), SizeF(280f, 220f))
+        val responsive = AndroidHomeWidgetRenderer.remoteViewsForSizes(sizes) { layoutId ->
+            AndroidHomeWidgetRenderer.contentViews(context, 275, canonicalIdleState(withNext = true), layoutId)
+        }
+        assertNotNull(responsive)
+        assertTrue(AndroidHomeWidgetRenderer.remoteViewsForSizes(emptyList()) { error("No sizes expected") } == null)
+
+        val widget = attachMeasured(context, responsive!!, widthDp = 130, heightDp = 220)
+        val start = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
+        assertEquals(View.VISIBLE, start.visibility)
+        assertTrue(start.isEnabled)
+        assertTrue(start.hasOnClickListeners())
+        assertEquals((48f * context.resources.displayMetrics.density).roundToInt(), start.width)
+    }
+
+    @Test
+    fun compactAndLandscapeVariantsPreserveCanonicalAndPendingActionGates() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val variants = listOf(
+            R.layout.taskchute_home_widget_compact to (130 to 220),
+            R.layout.taskchute_home_widget_landscape to (269 to 117),
+            R.layout.taskchute_home_widget to (280 to 220),
+        )
+        variants.forEachIndexed { index, (layoutId, size) ->
+            val idleCanonical = AndroidHomeWidgetRenderer.contentViews(
+                context,
+                280 + index,
+                canonicalIdleState(withNext = true),
+                layoutId,
+            )
+            val idleWidget = attachMeasured(context, idleCanonical, size.first, size.second)
+            var start = idleWidget.root.findViewById<View>(R.id.home_widget_idle_start_action)
+            assertEquals(View.VISIBLE, start.visibility)
+            assertTrue(start.isEnabled)
+            assertTrue(start.hasOnClickListeners())
+            assertEquals((48f * context.resources.displayMetrics.density).roundToInt(), start.width)
+
+            AndroidHomeWidgetRenderer.optimisticViews(
+                context,
+                optimisticAndroidHomeWidgetComplete(
+                    AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
+                    AndroidHomeWidgetDisplayTask("Following task", null),
+                ),
+                layoutId,
+            ).reapply(context, idleWidget.root)
+            layout(idleWidget)
+            start = idleWidget.root.findViewById(R.id.home_widget_idle_start_action)
+            assertEquals(View.VISIBLE, start.visibility)
+            assertFalse(start.isEnabled)
+            assertFalse(start.hasOnClickListeners())
+
+            idleCanonical.reapply(context, idleWidget.root)
+            layout(idleWidget)
+            start = idleWidget.root.findViewById(R.id.home_widget_idle_start_action)
+            assertTrue(start.isEnabled)
+            assertTrue(start.hasOnClickListeners())
+
+            val runningCanonical = AndroidHomeWidgetRenderer.contentViews(
+                context,
+                290 + index,
+                canonicalRunningState("execution"),
+                layoutId,
+            )
+            val runningWidget = attachMeasured(context, runningCanonical, size.first, size.second)
+            var complete = runningWidget.root.findViewById<View>(R.id.home_widget_complete_action)
+            assertEquals(View.VISIBLE, complete.visibility)
+            assertTrue(complete.isEnabled)
+            assertTrue(complete.hasOnClickListeners())
+            assertEquals((48f * context.resources.displayMetrics.density).roundToInt(), complete.width)
+
+            AndroidHomeWidgetRenderer.optimisticViews(
+                context,
+                optimisticAndroidHomeWidgetStart(
+                    "Running task",
+                    123_456L,
+                    AndroidHomeWidgetDisplayTask("Next task", null),
+                )!!,
+                layoutId,
+            ).reapply(context, runningWidget.root)
+            layout(runningWidget)
+            complete = runningWidget.root.findViewById(R.id.home_widget_complete_action)
+            assertEquals(View.VISIBLE, complete.visibility)
+            assertFalse(complete.isEnabled)
+            assertFalse(complete.hasOnClickListeners())
+
+            runningCanonical.reapply(context, runningWidget.root)
+            layout(runningWidget)
+            complete = runningWidget.root.findViewById(R.id.home_widget_complete_action)
+            assertTrue(complete.isEnabled)
+            assertTrue(complete.hasOnClickListeners())
+        }
     }
 
     @Test
@@ -436,6 +568,14 @@ class AndroidHomeWidgetInstrumentedTest {
             Triple(1.3f, 280, 240),
             Triple(1.0f, 240, 200),
             Triple(1.3f, 240, 220),
+            Triple(1.0f, 110, 220),
+            Triple(1.0f, 130, 220),
+            Triple(1.0f, 150, 220),
+            Triple(1.3f, 110, 220),
+            Triple(1.3f, 130, 200),
+            Triple(1.3f, 150, 220),
+            Triple(1.0f, 269, 117),
+            Triple(1.3f, 269, 117),
         )
         val longTitle = "A very long running task title that should truncate without covering actions"
 
@@ -444,26 +584,35 @@ class AndroidHomeWidgetInstrumentedTest {
                 this.fontScale = fontScale
             }
             val context = baseContext.createConfigurationContext(configuration)
+            val layoutId = when (androidHomeWidgetLayoutBucket(widthDp.toFloat(), heightDp.toFloat())) {
+                AndroidHomeWidgetLayoutBucket.COMPACT -> R.layout.taskchute_home_widget_compact
+                AndroidHomeWidgetLayoutBucket.COMPACT_WIDE_SHORT -> R.layout.taskchute_home_widget_landscape
+                AndroidHomeWidgetLayoutBucket.DETAILED -> R.layout.taskchute_home_widget
+            }
             val views = listOf(
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
                     190 + index,
                     canonicalRunningState("execution", title = longTitle),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
                     190 + index,
                     canonicalRunningState("execution", startedAt = "2026-10-07T09:00:00Z"),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
                     190 + index,
                     canonicalRunningState("execution", startedAt = "2026-10-07T08:30:00Z"),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
                     190 + index,
                     canonicalRunningState("execution", estimateSeconds = null),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
@@ -471,6 +620,7 @@ class AndroidHomeWidgetInstrumentedTest {
                     canonicalRunningState("execution").copy(
                         notice = "操作を完了できませんでした。最新の状態を表示しています。",
                     ),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.optimisticViews(
                     context,
@@ -479,6 +629,7 @@ class AndroidHomeWidgetInstrumentedTest {
                         123_456L,
                         AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
                     )!!,
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.optimisticViews(
                     context,
@@ -486,14 +637,16 @@ class AndroidHomeWidgetInstrumentedTest {
                         AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分"),
                         AndroidHomeWidgetDisplayTask("Following task", null),
                     ),
+                    layoutId,
                 ),
                 AndroidHomeWidgetRenderer.contentViews(
                     context,
                     190 + index,
                     canonicalIdleState(withNext = true, title = longTitle),
+                    layoutId,
                 ),
-                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = false)),
-                RemoteViews(context.packageName, R.layout.taskchute_home_widget).apply {
+                AndroidHomeWidgetRenderer.contentViews(context, 190 + index, canonicalIdleState(withNext = false), layoutId),
+                RemoteViews(context.packageName, layoutId).apply {
                     setViewVisibility(R.id.home_widget_running_content, View.GONE)
                     setViewVisibility(R.id.home_widget_idle_content, View.GONE)
                     setViewVisibility(R.id.home_widget_status, View.VISIBLE)
@@ -546,10 +699,24 @@ class AndroidHomeWidgetInstrumentedTest {
                     assertEquals((48f * density).roundToInt(), complete.width)
                     assertEquals((48f * density).roundToInt(), complete.height)
                     val runningCard = widget.root.findViewById<View>(R.id.home_widget_running_card)
-                    assertEquals(
-                        runningCard.top + runningCard.height / 2,
-                        runningCard.top + complete.top + complete.height / 2,
-                    )
+                    if (layoutId == R.layout.taskchute_home_widget_compact) {
+                        val progress = widget.root.findViewById<View>(R.id.home_widget_progress)
+                        val actionBounds = Rect(0, 0, complete.width, complete.height)
+                        val progressBounds = Rect(0, 0, progress.width, progress.height)
+                        widget.root.offsetDescendantRectToMyCoords(complete, actionBounds)
+                        widget.root.offsetDescendantRectToMyCoords(progress, progressBounds)
+                        assertTrue(
+                            "compact Complete target follows the timer/progress details at " +
+                                "fontScale=$fontScale width=$widthDp height=$heightDp state=$stateIndex " +
+                                "(action=$actionBounds progress=$progressBounds)",
+                            actionBounds.top >= progressBounds.bottom,
+                        )
+                    } else {
+                        assertEquals(
+                            runningCard.top + runningCard.height / 2,
+                            runningCard.top + complete.top + complete.height / 2,
+                        )
+                    }
                     val nextRow = widget.root.findViewById<View>(R.id.home_widget_running_next_row)
                     val nextBounds = Rect(0, 0, nextRow.width, nextRow.height)
                     widget.root.offsetDescendantRectToMyCoords(
@@ -572,7 +739,19 @@ class AndroidHomeWidgetInstrumentedTest {
                     val title = widget.root.findViewById<View>(R.id.home_widget_idle_task_title)
                     val action = widget.root.findViewById<View>(R.id.home_widget_idle_start_action)
                     assertTrue(title.width > 0)
-                    assertTrue("Idle title and action must not overlap", title.right <= action.left)
+                    if (layoutId == R.layout.taskchute_home_widget_compact) {
+                        val titleBounds = Rect(0, 0, title.width, title.height)
+                        val actionBounds = Rect(0, 0, action.width, action.height)
+                        widget.root.offsetDescendantRectToMyCoords(title, titleBounds)
+                        widget.root.offsetDescendantRectToMyCoords(action, actionBounds)
+                        assertTrue(
+                            "compact Idle action follows the readable title " +
+                                "(title=$titleBounds action=$actionBounds)",
+                            titleBounds.bottom <= actionBounds.top,
+                        )
+                    } else {
+                        assertTrue("Idle title and action must not overlap", title.right <= action.left)
+                    }
                     assertEquals((48f * density).roundToInt(), action.width)
                     assertEquals((48f * density).roundToInt(), action.height)
                     val followingRow = widget.root.findViewById<View>(R.id.home_widget_idle_following_row)
