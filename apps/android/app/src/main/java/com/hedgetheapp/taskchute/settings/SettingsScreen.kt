@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +58,7 @@ import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
 import com.hedgetheapp.taskchute.ui.TaskChuteIcons
+import com.hedgetheapp.taskchute.document.MarkdownEditorPreferences
 
 @Composable
 fun SettingsScreen(
@@ -69,23 +71,32 @@ fun SettingsScreen(
 ) {
     val state = controller.state
     var leaveHome by remember { mutableStateOf(false) }
-    BackHandler(enabled = state.destination != SettingsDestination.HOME && state.sectionEditor == null && state.projectEditor == null && state.routineEditor == null) { controller.showHome() }
+    var showNoteSettings by remember { mutableStateOf(false) }
+    BackHandler(
+        enabled = showNoteSettings || (state.destination != SettingsDestination.HOME && state.sectionEditor == null && state.projectEditor == null && state.routineEditor == null),
+    ) {
+        if (showNoteSettings) showNoteSettings = false else controller.showHome()
+    }
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.SETTINGS,
-                onToday = onNavigateToday,
-                onNotes = onNavigateNotes,
-                onDaily = onNavigateDaily,
-                onReview = onNavigateReview,
+                onToday = { showNoteSettings = false; onNavigateToday() },
+                onNotes = { showNoteSettings = false; onNavigateNotes() },
+                onDaily = { showNoteSettings = false; onNavigateDaily() },
+                onReview = { showNoteSettings = false; onNavigateReview() },
                 onSettings = {},
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             when (state.destination) {
-                SettingsDestination.HOME -> SettingsHome(controller, onSignOut)
+                SettingsDestination.HOME -> if (showNoteSettings) {
+                    NotesSettings(onBack = { showNoteSettings = false })
+                } else {
+                    SettingsHome(controller, onSignOut, onOpenNoteSettings = { showNoteSettings = true })
+                }
                 SettingsDestination.SECTIONS -> SectionSettings(controller)
                 SettingsDestination.PROJECTS -> ProjectSettings(controller)
                 SettingsDestination.ROUTINES -> RoutineSettings(controller)
@@ -113,7 +124,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit) {
+private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit, onOpenNoteSettings: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(top = 20.dp)) {
         Text("設定", style = MaterialTheme.typography.headlineMedium, color = TaskChuteColors.PrimaryText)
         Text("TaskChuteの時間と再利用設定を管理します。", color = TaskChuteColors.SecondaryText, modifier = Modifier.padding(top = 4.dp))
@@ -123,8 +134,38 @@ private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit) 
         SettingsCard("プロジェクト設定", "Projectの作成・編集・管理") { controller.openProjects() }
         Spacer(Modifier.height(12.dp))
         SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理") { controller.openRoutines() }
+        Spacer(Modifier.height(12.dp))
+        SettingsCard("ノート設定", "ノートの表示を調整") { onOpenNoteSettings() }
         Spacer(Modifier.weight(1f))
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().height(50.dp).navigationBarsPadding().padding(bottom = 0.dp)) { Text("ログアウト") }
+    }
+}
+
+@Composable
+private fun NotesSettings(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val preferences = remember(context) { MarkdownEditorPreferences(context) }
+    var showLineNumbers by remember(preferences) { mutableStateOf(preferences.showLineNumbers()) }
+
+    Column(Modifier.fillMaxSize().padding(top = 8.dp)) {
+        SettingsHeader("ノート設定", onBack)
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("行番号を表示", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
+                Text("Markdown本文の左側に行番号を表示します。", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+            }
+            Switch(
+                checked = showLineNumbers,
+                onCheckedChange = { enabled ->
+                    showLineNumbers = enabled
+                    preferences.setShowLineNumbers(enabled)
+                },
+                modifier = Modifier.semantics { contentDescription = "行番号を表示" },
+            )
+        }
     }
 }
 

@@ -1,15 +1,15 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
@@ -37,6 +39,9 @@ internal data class DailyCursorEditorIdentity(val sessionKey: String, val docume
 internal fun dailyCursorEditorIdentity(state: DailyUiState): DailyCursorEditorIdentity? =
     state.document?.documentId?.let { DailyCursorEditorIdentity(sessionKey = it, documentId = it) }
 
+internal fun shouldShowDailyNavigationBar(editorBodyFocused: Boolean, imeVisible: Boolean): Boolean =
+    !(editorBodyFocused && imeVisible)
+
 @Composable
 fun DailyScreen(
     controller: DailyController,
@@ -47,6 +52,12 @@ fun DailyScreen(
 ) {
     val state = controller.state
     val cursorIdentity = dailyCursorEditorIdentity(state)
+    val density = LocalDensity.current
+    val imeInsets = LocalMarkdownEditorImeInsets.current ?: WindowInsets.ime
+    val imeVisible = imeInsets.getBottom(density) > 0
+    var editorBodyFocused by remember { mutableStateOf(false) }
+    val imeEditorActive = editorBodyFocused && imeVisible
+    val showNavigationBar = shouldShowDailyNavigationBar(editorBodyFocused, imeVisible)
     var datePickerVisible by remember { mutableStateOf(false) }
     var navigationRequested by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -85,18 +96,22 @@ fun DailyScreen(
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
-            AndroidNavigationBar(
-                selected = AndroidDestination.DAILY,
-                onToday = { leave(onNavigateToday) },
-                onNotes = { leave(onNavigateNotes) },
-                onReview = { leave(onNavigateReview) },
-                onDaily = { },
-                onSettings = { leave(onNavigateSettings) },
-            )
+            if (showNavigationBar) {
+                AndroidNavigationBar(
+                    selected = AndroidDestination.DAILY,
+                    onToday = { leave(onNavigateToday) },
+                    onNotes = { leave(onNavigateNotes) },
+                    onReview = { leave(onNavigateReview) },
+                    onDaily = { },
+                    onSettings = { leave(onNavigateSettings) },
+                )
+            }
         },
     ) { padding ->
+        val contentPadding = imeEditorScaffoldPadding(padding, imeEditorActive, LocalLayoutDirection.current)
         Column(
-            Modifier.fillMaxSize().padding(padding).imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
+            Modifier.fillMaxSize().padding(contentPadding).windowInsetsPadding(imeInsets)
+                .padding(horizontal = 20.dp).padding(top = 12.dp, bottom = if (imeEditorActive) 0.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TaskChuteDateNavigator(
@@ -115,6 +130,7 @@ fun DailyScreen(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         editorSessionKey = cursorIdentity?.sessionKey ?: state.selectedDate ?: Unit,
                         cursorDocumentId = cursorIdentity?.documentId,
+                        onBodyFocusChanged = { editorBodyFocused = it },
                         footer = {
                             Text(
                                 when (state.saveStatus) {

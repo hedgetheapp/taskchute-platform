@@ -1,10 +1,12 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -13,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
@@ -22,7 +25,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
@@ -33,6 +35,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -395,11 +400,16 @@ class NotesScreenInstrumentedTest {
     fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
         val latest = mutableStateOf(TextFieldValue("live", selection = TextRange(0, 4)))
         composeRule.setContent {
-            MarkdownImeToolbar(
-                modifier = Modifier.fillMaxWidth(),
-                fieldValue = latest.value,
-                onValueChange = { latest.value = it },
-            )
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                Box(Modifier.width(360.dp).height(48.dp)) {
+                    MarkdownImeToolbar(
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        fieldValue = latest.value,
+                        onValueChange = { latest.value = it },
+                    )
+                }
+            }
         }
 
         composeRule.onNodeWithContentDescription("\u592a\u5b57").assertIsDisplayed()
@@ -408,6 +418,18 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("\u30c1\u30a7\u30c3\u30af\u30ea\u30b9\u30c8").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u5f15\u7528").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u30ea\u30f3\u30af").assertIsDisplayed()
+
+        val actionBounds = listOf("太字", "見出し", "箇条書き", "チェックリスト", "引用", "リンク")
+            .map { composeRule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot }
+        val pixelsPerDp = composeRule.density.density
+        actionBounds.forEach { bounds ->
+            assertEquals("toolbar action stride remains compact", 44f, bounds.width / pixelsPerDp, 1f)
+            assertEquals("toolbar action retains a 48dp tall hit area", 48f, bounds.height / pixelsPerDp, 1f)
+            assertTrue("toolbar actions stay inside the 360dp portrait fixture", bounds.left >= 0f && bounds.right <= 360f * pixelsPerDp)
+        }
+        actionBounds.zipWithNext().forEach { (left, right) ->
+            assertEquals("adjacent actions keep the 44dp stride", 44f, (right.center.x - left.center.x) / pixelsPerDp, 1f)
+        }
 
         composeRule.onNodeWithContentDescription("\u592a\u5b57").performClick()
         assertEquals("**live**", latest.value.text)
@@ -436,7 +458,7 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
-    fun lineNumberDisplayDefaultsOnAndPersistsItsLocalToggle() {
+    fun lineNumberDisplayReadsThePersistedSettingWhenEditorOpens() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val preferences = context.getSharedPreferences(MarkdownEditorPreferences.PREFERENCES_NAME, 0)
         preferences.edit().remove(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY).commit()
@@ -450,16 +472,228 @@ class NotesScreenInstrumentedTest {
                 }
             }
             composeRule.onNodeWithTag("markdown-line-number-gutter").assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("行番号を表示").performClick()
+            assertTrue(composeRule.onAllNodesWithContentDescription("行番号を表示").fetchSemanticsNodes().isEmpty())
+            composeRule.runOnIdle { showEditor.value = false }
+            composeRule.waitForIdle()
+            preferences.edit().putBoolean(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY, false).commit()
+            composeRule.runOnIdle { showEditor.value = true }
             assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
 
             composeRule.runOnIdle { showEditor.value = false }
             composeRule.waitForIdle()
+            preferences.edit().putBoolean(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY, true).commit()
             composeRule.runOnIdle { showEditor.value = true }
-            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+            composeRule.onNodeWithTag("markdown-line-number-gutter").assertIsDisplayed()
         } finally {
             preferences.edit().remove(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY).commit()
         }
+    }
+
+    @Test
+    fun lineNumberSettingAppliesToStandaloneTaskAndProjectEditors() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(MarkdownEditorPreferences.PREFERENCES_NAME, 0)
+        val hadStoredValue = preferences.contains(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY)
+        val previousValue = preferences.getBoolean(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY, true)
+        val repository = FakeRepository().apply {
+            standaloneDocuments["standalone-doc"] = AndroidDocument("standalone-doc", DocumentKind.STANDALONE, "Standalone", "body", 0)
+            taskDocument = AndroidDocument("task-doc", DocumentKind.TASK_PRIMARY, "", "body", 0, taskId = "task-1")
+            projectDocument = AndroidDocument("project-doc", DocumentKind.PROJECT_PRIMARY, "Project A", "body", 0, projectId = "project-1")
+        }
+        preferences.edit().putBoolean(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY, false).commit()
+        controller = NotesController(repository, onUnauthorized = {})
+        try {
+            composeRule.setContent { MaterialTheme { notesScreen() } }
+
+            controller!!.openStandalone("standalone-doc")
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.origin == NoteEditorOrigin.STANDALONE_LIST }
+            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+            composeRule.runOnIdle { controller!!.dismissEditor() }
+
+            controller!!.openTaskPrimary("task-1", "Task title", "task-doc")
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.origin == NoteEditorOrigin.TODAY_TASK }
+            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+            composeRule.runOnIdle { controller!!.dismissEditor() }
+
+            controller!!.openProjectPrimary("project-doc", "project-1", "Project A")
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.origin == NoteEditorOrigin.PROJECT_LIST }
+            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+        } finally {
+            if (hadStoredValue) preferences.edit().putBoolean(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY, previousValue).commit()
+            else preferences.edit().remove(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY).commit()
+        }
+    }
+
+    @Test
+    fun tappingBlankEditorAreaFocusesAtSourceStartWithoutChangingMarkdown() {
+        val focusState = mutableStateOf(false)
+        var latest = TextFieldValue("A short note")
+        val saves = AtomicInteger()
+        composeRule.setContent {
+            MaterialTheme {
+                MarkdownLiveEditor(
+                    value = "A short note",
+                    onValueChange = { saves.incrementAndGet() },
+                    enabled = true,
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    onTextFieldValueChange = { latest = it },
+                    onBodyFocusChanged = { focusState.value = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.waitForIdle()
+
+        assertTrue("blank body taps focus the editable body", focusState.value)
+        assertEquals("A short note", latest.text)
+        assertEquals(TextRange(0), latest.selection)
+        assertEquals("a blank-area tap must not enter the D-111 save path", 0, saves.get())
+    }
+
+    @Test
+    fun tappingEmptyEditorAreaFocusesAtSourceStartWithoutSaving() {
+        val focusState = mutableStateOf(false)
+        var latest = TextFieldValue("")
+        val saves = AtomicInteger()
+        composeRule.setContent {
+            MaterialTheme {
+                MarkdownLiveEditor(
+                    value = "",
+                    onValueChange = { saves.incrementAndGet() },
+                    enabled = true,
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    onTextFieldValueChange = { latest = it },
+                    onBodyFocusChanged = { focusState.value = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.6f))
+        }
+        composeRule.waitForIdle()
+
+        assertTrue("an empty editor body can receive focus", focusState.value)
+        assertEquals(TextRange(0), latest.selection)
+        assertEquals(0, saves.get())
+    }
+
+    @Test
+    fun notesToolbarIsAdjacentToSimulatedImeAfterBlankBodyTap() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val cursorStorage = context.getSharedPreferences(DocumentCursorPreferences.PREFERENCES_NAME, 0)
+        val cursorKey = DocumentCursorPreferences.CARET_OFFSET_PREFIX + "task-doc"
+        val hadCursor = cursorStorage.contains(cursorKey)
+        val oldCursor = cursorStorage.getInt(cursorKey, 0)
+        val repository = FakeRepository().apply {
+            taskDocument = AndroidDocument("task-doc", DocumentKind.TASK_PRIMARY, "", "Daily task note", 0, taskId = "task-1")
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        val simulatedImeHeight = 280.dp
+        try {
+            composeRule.setContent {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme { notesScreen() }
+                }
+            }
+            composeRule.runOnIdle { controller!!.openTaskPrimary("task-1", "Task title", "task-doc") }
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.document?.documentId == "task-doc" }
+
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+            composeRule.onNodeWithText("Task title").assertIsDisplayed()
+            assertTrue(composeRule.onAllNodesWithContentDescription("ノート一覧").fetchSemanticsNodes().isEmpty())
+            assertEquals(0, DocumentCursorPreferences(context).readCaretOffset("task-doc"))
+            assertEquals("blank focus does not send a Task Note update", 0, repository.taskUpdateCalls.get())
+
+            val rootBottom = composeRule.onAllNodes(isRoot()).fetchSemanticsNodes().maxBy { it.boundsInRoot.height }.boundsInRoot.bottom
+            val toolbarBottom = composeRule.onNodeWithTag("markdown-ime-toolbar").fetchSemanticsNode().boundsInRoot.bottom
+            val imeHeightPx = with(composeRule.density) { simulatedImeHeight.toPx() }
+            val twoDpPx = with(composeRule.density) { 2.dp.toPx() }
+            assertEquals("Notes toolbar ends at the simulated keyboard top", rootBottom - imeHeightPx, toolbarBottom, twoDpPx)
+        } finally {
+            if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
+            else cursorStorage.edit().remove(cursorKey).commit()
+        }
+    }
+
+    @Test
+    fun taskNoteSheetShowsToolbarAfterBlankTapWithImeInsets() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val cursorStorage = context.getSharedPreferences(DocumentCursorPreferences.PREFERENCES_NAME, 0)
+        val cursorKey = DocumentCursorPreferences.CARET_OFFSET_PREFIX + "task-doc"
+        val hadCursor = cursorStorage.contains(cursorKey)
+        val oldCursor = cursorStorage.getInt(cursorKey, 0)
+        val repository = FakeRepository().apply {
+            taskDocument = AndroidDocument("task-doc", DocumentKind.TASK_PRIMARY, "", "Task sheet body", 0, taskId = "task-1")
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        val simulatedImeHeight = 280.dp
+        try {
+            composeRule.setContent {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme { TaskNoteBottomSheet(requireNotNull(controller), onDismiss = {}) }
+                }
+            }
+            composeRule.runOnIdle { controller!!.openTaskPrimary("task-1", "Task title", "task-doc") }
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.document?.documentId == "task-doc" }
+
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+            composeRule.onNodeWithText("Task title").assertIsDisplayed()
+            assertEquals(0, DocumentCursorPreferences(context).readCaretOffset("task-doc"))
+            assertEquals(0, repository.taskUpdateCalls.get())
+        } finally {
+            if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
+            else cursorStorage.edit().remove(cursorKey).commit()
+        }
+    }
+
+    @Test
+    fun blockedEditorDoesNotFocusFromBlankAreaTap() {
+        val focusState = mutableStateOf(false)
+        var latest = TextFieldValue("blocked", selection = TextRange(3))
+        val saves = AtomicInteger()
+        composeRule.setContent {
+            MaterialTheme {
+                MarkdownLiveEditor(
+                    value = "blocked",
+                    onValueChange = { saves.incrementAndGet() },
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    onTextFieldValueChange = { latest = it },
+                    onBodyFocusChanged = { focusState.value = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.waitForIdle()
+
+        assertFalse(focusState.value)
+        assertEquals(TextRange(3), latest.selection)
+        assertEquals(0, saves.get())
     }
 
     @Test
@@ -736,6 +970,7 @@ class NotesScreenInstrumentedTest {
         var taskDocument: AndroidDocument? = null
         var failUpdates = false
         var activeDocuments: List<AndroidDocumentSummary> = emptyList()
+        val standaloneDocuments: MutableMap<String, AndroidDocument> = mutableMapOf()
         var archivedDocuments: List<AndroidDocumentSummary> = emptyList()
         var projectDocuments: List<AndroidProjectDocumentSummary> = emptyList()
         var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
@@ -769,7 +1004,8 @@ class NotesScreenInstrumentedTest {
             return DocumentLifecycleResult.Success()
         }
 
-        override fun fetchStandalone(documentId: String): DocumentResult = DocumentResult.Missing
+        override fun fetchStandalone(documentId: String): DocumentResult = standaloneDocuments[documentId]
+            ?.let(DocumentResult::Success) ?: DocumentResult.Missing
 
         override fun createStandalone(request: StandaloneCreateRequest): DocumentResult {
             createCalls.incrementAndGet()

@@ -3,6 +3,8 @@ package com.hedgetheapp.taskchute.settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -10,6 +12,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.hedgetheapp.taskchute.document.MarkdownEditorPreferences
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,16 +24,41 @@ class SettingsScreenInstrumentedTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun settingsHomeShowsConceptCardsAndThreeTabNavigation() {
+    fun settingsHomeShowsConceptCardsAndFiveTabNavigation() {
         val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
         composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
         composeRule.onNodeWithText("TaskChuteの時間と再利用設定を管理します。").assertIsDisplayed()
         composeRule.onNodeWithText("セクション設定").assertIsDisplayed()
         composeRule.onNodeWithText("プロジェクト設定").assertIsDisplayed()
         composeRule.onNodeWithText("ルーティン設定").assertIsDisplayed()
-        composeRule.onNodeWithText("今日").assertIsDisplayed()
-        composeRule.onNodeWithText("ノート").assertIsDisplayed()
+        composeRule.onNodeWithText("ノート設定").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Task").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("ノート一覧").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Daily").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Review").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed()
         controller.close()
+    }
+
+    @Test
+    fun notesSettingsPersistsLineNumberPreferenceAcrossReopen() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = MarkdownEditorPreferences(context)
+        preferences.setShowLineNumbers(true)
+        val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
+        try {
+            composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
+            composeRule.onNodeWithContentDescription("ノート設定").performClick()
+            composeRule.onNodeWithContentDescription("行番号を表示").assertIsOn().performClick()
+            assertFalse(preferences.showLineNumbers())
+
+            composeRule.onNodeWithText("‹ 戻る").performClick()
+            composeRule.onNodeWithContentDescription("ノート設定").performClick()
+            composeRule.onNodeWithContentDescription("行番号を表示").assertIsOff()
+        } finally {
+            preferences.setShowLineNumbers(true)
+            controller.close()
+        }
     }
 
     @Test

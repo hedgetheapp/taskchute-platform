@@ -1,6 +1,5 @@
 package com.hedgetheapp.taskchute.document
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -24,11 +22,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +74,8 @@ import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import android.graphics.Paint as AndroidPaint
 import kotlin.math.roundToInt
+
+internal val LocalMarkdownEditorImeInsets = staticCompositionLocalOf<WindowInsets?> { null }
 
 data class MarkdownSelection(val start: Int, val end: Int) {
     fun normalized(length: Int): MarkdownSelection {
@@ -440,11 +440,12 @@ fun MarkdownLiveEditor(
     onTextFieldValueChange: ((TextFieldValue) -> Unit)? = null,
     editorSessionKey: Any = Unit,
     cursorDocumentId: String? = null,
+    onBodyFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val cursorPreferences = remember(context) { DocumentCursorPreferences(context) }
     val lineNumberPreferences = remember(context) { MarkdownEditorPreferences(context) }
-    var showLineNumbers by remember { mutableStateOf(lineNumberPreferences.showLineNumbers()) }
+    val showLineNumbers = remember(context) { lineNumberPreferences.showLineNumbers() }
     val editorScrollState = remember(editorSessionKey) { ScrollState(0) }
     val currentCursorDocumentId = rememberUpdatedState(cursorDocumentId)
     val currentTextFieldValueChange = rememberUpdatedState(onTextFieldValueChange)
@@ -464,7 +465,8 @@ fun MarkdownLiveEditor(
     val keyboardController = LocalSoftwareKeyboardController.current
     val uriHandler = LocalUriHandler.current
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val imeInsets = LocalMarkdownEditorImeInsets.current ?: WindowInsets.ime
+    val imeVisible = imeInsets.getBottom(density) > 0
     val toolbarVisible = hasFocus && imeVisible && enabled
     val onTextFieldValueObserved: (TextFieldValue) -> Unit = { next ->
         currentCursorDocumentId.value?.let { documentId ->
@@ -495,6 +497,7 @@ fun MarkdownLiveEditor(
         )
     }
     val latestTextLayoutResult = rememberUpdatedState(textLayoutResult)
+    val latestTextFieldValue = rememberUpdatedState(fieldValue)
     val latestCheckboxHits = rememberUpdatedState(checkboxHits)
     val latestLinkHits = rememberUpdatedState(linkHits)
     val latestOpenUrl = rememberUpdatedState(onOpenUrl)
@@ -604,30 +607,57 @@ fun MarkdownLiveEditor(
 
     Box(modifier) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(bottom = if (toolbarVisible) 52.dp else 0.dp),
+            modifier = Modifier.fillMaxSize().padding(bottom = if (toolbarVisible) 50.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(40.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("行番号を表示", color = TaskChuteColors.SecondaryText, fontSize = 13.sp)
-                Switch(
-                    checked = showLineNumbers,
-                    onCheckedChange = { enabled ->
-                        showLineNumbers = enabled
-                        lineNumberPreferences.setShowLineNumbers(enabled)
-                    },
-                    modifier = Modifier.semantics { contentDescription = "行番号を表示" },
-                )
-            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .onSizeChanged { editorViewportHeightPx = it.height }
-                    .testTag("markdown-editor-scroll-viewport"),
+                    .testTag("markdown-editor-scroll-viewport")
+                    .pointerInput(enabled, editorSessionKey) {
+                        if (!enabled) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial,
+                            )
+                            val currentValue = latestTextFieldValue.value
+                            if (currentValue.composition != null) return@awaitEachGesture
+                            val layout = latestTextLayoutResult.value
+                            val isBelowContent = if (currentValue.text.isEmpty()) {
+                                true
+                            } else {
+                                val lastLineBottom = layout?.let { textLayout ->
+                                    textLayout.getLineBottom(textLayout.lineCount - 1) + with(density) { 2.dp.toPx() }
+                                } ?: return@awaitEachGesture
+                                down.position.y + editorScrollState.value > lastLineBottom
+                            }
+                            if (!isBelowContent) return@awaitEachGesture
+
+                            var canceled = false
+                            var upPosition = down.position
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                upPosition = change.position
+                                if (change.changedToUpIgnoreConsumed()) break
+                                if (!change.pressed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    canceled = true
+                                    break
+                                }
+                            }
+
+                            if (!canceled && (upPosition - down.position).getDistance() <= viewConfiguration.touchSlop) {
+                                val next = latestTextFieldValue.value.copy(selection = TextRange(0))
+                                fieldValue = next
+                                onTextFieldValueObserved(next)
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                            }
+                        }
+                    },
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize().verticalScroll(editorScrollState),
@@ -746,7 +776,10 @@ fun MarkdownLiveEditor(
                             contentDescription = "Markdown body"
                             if (interactiveActions.isNotEmpty()) customActions = interactiveActions
                         }
-                        .onFocusChanged { hasFocus = it.isFocused },
+                        .onFocusChanged {
+                            hasFocus = it.isFocused
+                            onBodyFocusChanged?.invoke(it.isFocused)
+                        },
                     decorationBox = { innerTextField ->
                         Box(Modifier.fillMaxWidth().padding(top = 2.dp)) {
                             if (fieldValue.text.isEmpty()) Text("本文を入力", color = TaskChuteColors.SecondaryText)
@@ -761,7 +794,7 @@ fun MarkdownLiveEditor(
         }
         if (toolbarVisible) {
             MarkdownImeToolbar(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp).testTag("markdown-ime-toolbar"),
                 fieldValue = fieldValue,
                 onValueChange = { next ->
                     fieldValue = next
@@ -897,28 +930,27 @@ internal fun MarkdownImeToolbar(
     fieldValue: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
 ) {
-    val scrollState = rememberScrollState()
     Row(
-        modifier = modifier.horizontalScroll(scrollState).padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = modifier.padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MarkdownToolbarAction(R.drawable.ic_material_format_bold_24, "太字", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_bold_24, "太字", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::bold, onValueChange)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_format_h1_24, "見出し", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_h1_24, "見出し", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::heading, onValueChange)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_format_list_bulleted_24, "箇条書き", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_list_bulleted_24, "箇条書き", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::bullet, onValueChange)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_checklist_24, "チェックリスト", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_checklist_24, "チェックリスト", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::checkbox, onValueChange)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_format_quote_24, "引用", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_format_quote_24, "引用", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::quote, onValueChange)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(48.dp)) {
+        MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(44.dp)) {
             applyMarkdownCommand(fieldValue, MarkdownEditCommands::link, onValueChange)
         }
     }
@@ -933,12 +965,12 @@ private fun MarkdownToolbarAction(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(44.dp).focusProperties { canFocus = false }.semantics { contentDescription = description },
+        modifier = modifier.height(48.dp).focusProperties { canFocus = false }.semantics { contentDescription = description },
     ) {
         Icon(
             painter = painterResource(iconResource),
             contentDescription = null,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(20.dp),
             tint = TaskChuteColors.PrimaryText,
         )
     }
