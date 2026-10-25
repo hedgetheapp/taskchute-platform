@@ -2,17 +2,28 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -20,6 +31,12 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
@@ -416,6 +433,152 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("リンク").performClick()
         assertEquals("[OpenAI](https://)", latest.value.text)
         assertEquals(TextRange(9, 17), latest.value.selection)
+    }
+
+    @Test
+    fun lineNumberDisplayDefaultsOnAndPersistsItsLocalToggle() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(MarkdownEditorPreferences.PREFERENCES_NAME, 0)
+        preferences.edit().remove(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY).commit()
+        val showEditor = mutableStateOf(true)
+        try {
+            composeRule.setContent {
+                if (showEditor.value) {
+                    MaterialTheme {
+                        MarkdownLiveEditor("first\nsecond", {}, true, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+            composeRule.onNodeWithTag("markdown-line-number-gutter").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("行番号を表示").performClick()
+            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+
+            composeRule.runOnIdle { showEditor.value = false }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle { showEditor.value = true }
+            assertTrue(composeRule.onAllNodesWithTag("markdown-line-number-gutter").fetchSemanticsNodes().isEmpty())
+        } finally {
+            preferences.edit().remove(MarkdownEditorPreferences.SHOW_LINE_NUMBERS_KEY).commit()
+        }
+    }
+
+    @Test
+    fun lineNumbersTrackRealEditorScrollAndCaretBringIntoView() {
+        val source = buildString {
+            append("# TOP_ANCHOR\n\n")
+            append("A very long paragraph that wraps several times when the editor is constrained to a narrow phone width.\n")
+            repeat(70) { index ->
+                append("line-$index unique-middle-anchor text that wraps at 360dp and remains one logical source line.\n\n")
+            }
+            append("BOTTOM_ANCHOR")
+        }
+        var latestFieldValue = TextFieldValue(source)
+        val requestIme = mutableStateOf(false)
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val keyboardController = LocalSoftwareKeyboardController.current
+            LaunchedEffect(requestIme.value) {
+                if (requestIme.value) keyboardController?.show()
+            }
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                MaterialTheme {
+                    Box(Modifier.width(360.dp).fillMaxHeight()) {
+                        MarkdownLiveEditor(
+                            value = source,
+                            onValueChange = {},
+                            enabled = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            onTextFieldValueChange = { latestFieldValue = it },
+                        )
+                    }
+                }
+            }
+        }
+
+        val viewport = composeRule.onNodeWithTag("markdown-editor-scroll-viewport")
+        val body = composeRule.onNodeWithContentDescription("Markdown body")
+        body.performClick()
+        body.performTextInput("X")
+        composeRule.runOnIdle { requestIme.value = true }
+        composeRule.waitForIdle()
+        assertTrue(latestFieldValue.text.contains("X"))
+        val scrollBefore = composeRule.onAllNodes(hasScrollAction(), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .mapNotNull { node ->
+                if (node.config.contains(SemanticsProperties.VerticalScrollAxisRange)) {
+                    node.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                } else null
+            }
+            .maxOrNull() ?: error("the shared editor scroll viewport must expose its scroll offset")
+
+        viewport.performTouchInput {
+            swipe(
+                start = Offset(width * 0.8f, height * 0.78f),
+                end = Offset(width * 0.8f, height * 0.57f),
+                durationMillis = 350,
+            )
+        }
+        composeRule.waitForIdle()
+        val scrollAfterSwipe = composeRule.onAllNodes(hasScrollAction(), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .mapNotNull { node ->
+                if (node.config.contains(SemanticsProperties.VerticalScrollAxisRange)) {
+                    node.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                } else null
+            }
+            .maxOrNull() ?: error("the shared editor scroll viewport must expose its scroll offset")
+        val scrollDelta = scrollAfterSwipe - scrollBefore
+        assertTrue("the swipe must change the editor's actual scroll offset", scrollDelta > 10f)
+
+        viewport.performTouchInput { click(Offset(width * 0.5f, 18f)) }
+        composeRule.waitForIdle()
+        assertTrue("a tap at the scrolled viewport top must hit later raw Markdown", latestFieldValue.selection.end > 20)
+        val starts = markdownSourceLineStarts(latestFieldValue.text)
+        val tappedLine = markdownSourceLineIndexAt(starts, latestFieldValue.selection.end)
+        val matchingVisibleNumber = (tappedLine + 1..minOf(tappedLine + 8, starts.size))
+            .firstOrNull { lineNumber ->
+                composeRule.onAllNodesWithContentDescription("markdown-line-number-$lineNumber", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            } ?: error("a visible logical line number should be available below the tapped anchor")
+        val visibleNumberBounds = composeRule.onNodeWithContentDescription(
+            "markdown-line-number-$matchingVisibleNumber",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val viewportBounds = viewport.fetchSemanticsNode().boundsInRoot
+        viewport.performTouchInput {
+            click(Offset(width * 0.7f, visibleNumberBounds.center.y - viewportBounds.top))
+        }
+        composeRule.waitForIdle()
+        assertEquals(
+            "a tap at the visible number's vertical position must hit that raw source line",
+            matchingVisibleNumber - 1,
+            markdownSourceLineIndexAt(starts, latestFieldValue.selection.end),
+        )
+
+        val scrollBeforeCaretMove = scrollAfterSwipe
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(latestFieldValue.text.length))
+        composeRule.waitForIdle()
+        val scrollAfterCaretMove = composeRule.onAllNodes(hasScrollAction(), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .mapNotNull { node ->
+                if (node.config.contains(SemanticsProperties.VerticalScrollAxisRange)) {
+                    node.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                } else null
+            }
+            .maxOrNull() ?: error("the shared editor scroll viewport must expose its scroll offset")
+        assertEquals(TextRange(latestFieldValue.text.length), latestFieldValue.selection)
+        val caretScrollDelta = scrollAfterCaretMove - scrollBeforeCaretMove
+        assertTrue("moving the caret to the end must bring that line into the viewport", caretScrollDelta > 10f)
+        val lastLine = starts.size
+        val lastLineNumber = composeRule.onNodeWithContentDescription("markdown-line-number-$lastLine", useUnmergedTree = true)
+        val lastLineBounds = lastLineNumber.fetchSemanticsNode().boundsInRoot
+        val caretViewportBounds = viewport.fetchSemanticsNode().boundsInRoot
+        assertTrue("the end line number must be visible after caret bring-into-view", lastLineBounds.top >= caretViewportBounds.top - 3f && lastLineBounds.bottom <= caretViewportBounds.bottom + 3f)
+        viewport.performTouchInput {
+            click(Offset(width * 0.7f, lastLineBounds.center.y - caretViewportBounds.top))
+        }
+        composeRule.waitForIdle()
+        assertEquals(lastLine - 1, markdownSourceLineIndexAt(starts, latestFieldValue.selection.end))
     }
 
     @Test

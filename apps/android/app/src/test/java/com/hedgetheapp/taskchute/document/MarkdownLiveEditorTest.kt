@@ -9,6 +9,41 @@ import org.junit.Test
 
 class MarkdownLiveEditorTest {
     @Test
+    fun logicalLineStartsCountEmptyConsecutiveAndTrailingLinesWithoutCountingSoftWraps() {
+        assertEquals(listOf(0), markdownSourceLineStarts(""))
+        assertEquals(listOf(0, 4, 5, 10), markdownSourceLineStarts("one\n\nwide\n"))
+        assertEquals(4, markdownSourceLineStarts("one\n\nwide\n").size)
+        assertEquals(1, markdownSourceLineStarts("one very wide line").size)
+    }
+
+    @Test
+    fun lineNumberPreferenceDefaultsOnAndPersistsAnExplicitOffValue() {
+        val storage = MemoryMarkdownEditorStorage()
+        val first = MarkdownEditorPreferences(storage)
+
+        assertTrue(first.showLineNumbers())
+        first.setShowLineNumbers(false)
+
+        assertEquals(false, MarkdownEditorPreferences(storage).showLineNumbers())
+    }
+
+    @Test
+    fun previewOffsetMappingKeepsHeadingAndStyledLinesInTheirLogicalSourceRows() {
+        val source = "# Heading\n\n**bold text** wraps across a narrow viewport\nplain"
+        val starts = markdownSourceLineStarts(source)
+        val transformed = MarkdownPreviewTransformation(MarkdownSelection(source.length, source.length))
+            .filter(AnnotatedString(source))
+
+        assertEquals(4, starts.size)
+        starts.forEachIndexed { expectedLine, sourceStart ->
+            val transformedOffset = transformed.offsetMapping.originalToTransformed(sourceStart)
+            val mappedSourceOffset = transformed.offsetMapping.transformedToOriginal(transformedOffset)
+            assertEquals(expectedLine, markdownSourceLineIndexAt(starts, mappedSourceOffset))
+        }
+        assertEquals("Heading\n\nbold text wraps across a narrow viewport\nplain", transformed.text.text)
+    }
+
+    @Test
     fun missingOrOutOfRangeSavedCaretUsesSafeSourceSelection() {
         assertEquals(TextFieldValue("body"), initialMarkdownTextFieldValue("body", null))
         assertEquals(TextRange(0), initialMarkdownTextFieldValue("body", -3).selection)
@@ -211,5 +246,13 @@ class MarkdownLiveEditorTest {
         val result = requireNotNull(toggleTaskCheckbox(source, 0))
 
         assertEquals(before, preservedSelectionAfterCheckboxToggle(before, result))
+    }
+
+    private class MemoryMarkdownEditorStorage : MarkdownEditorPreferences.Storage {
+        private val values = mutableMapOf<String, Boolean>()
+        override fun readBoolean(key: String): Boolean? = values[key]
+        override fun writeBoolean(key: String, value: Boolean) {
+            values[key] = value
+        }
     }
 }

@@ -1,6 +1,8 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,11 +28,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,15 +44,22 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +74,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
+import android.graphics.Paint as AndroidPaint
+import kotlin.math.roundToInt
 
 data class MarkdownSelection(val start: Int, val end: Int) {
     fun normalized(length: Int): MarkdownSelection {
@@ -242,6 +255,18 @@ private fun sourceLines(source: String): List<SourceLine> {
     return result
 }
 
+internal fun markdownSourceLineStarts(source: String): List<Int> = buildList {
+    add(0)
+    source.forEachIndexed { index, character ->
+        if (character == '\n') add(index + 1)
+    }
+}
+
+internal fun markdownSourceLineIndexAt(starts: List<Int>, sourceOffset: Int): Int {
+    val index = starts.binarySearch(sourceOffset)
+    return (if (index >= 0) index else -index - 2).coerceIn(0, starts.lastIndex)
+}
+
 private fun touchedLineIndexes(lines: List<SourceLine>, selection: MarkdownSelection): Set<Int> {
     if (lines.isEmpty()) return emptySet()
     val startLine = lines.indexOfLast { selection.start >= it.start }.coerceAtLeast(0)
@@ -418,6 +443,9 @@ fun MarkdownLiveEditor(
 ) {
     val context = LocalContext.current
     val cursorPreferences = remember(context) { DocumentCursorPreferences(context) }
+    val lineNumberPreferences = remember(context) { MarkdownEditorPreferences(context) }
+    var showLineNumbers by remember { mutableStateOf(lineNumberPreferences.showLineNumbers()) }
+    val editorScrollState = remember(editorSessionKey) { ScrollState(0) }
     val currentCursorDocumentId = rememberUpdatedState(cursorDocumentId)
     val currentTextFieldValueChange = rememberUpdatedState(onTextFieldValueChange)
     // Notes keep this key stable when an unmaterialized editor adopts its canonical document ID.
@@ -431,6 +459,7 @@ fun MarkdownLiveEditor(
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var hasFocus by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var editorViewportHeightPx by remember { mutableIntStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val uriHandler = LocalUriHandler.current
@@ -543,15 +572,82 @@ fun MarkdownLiveEditor(
         }
     }
 
+    LaunchedEffect(
+        fieldValue.selection.start,
+        fieldValue.selection.end,
+        textLayoutResult,
+        editorViewportHeightPx,
+        hasFocus,
+        enabled,
+        transformedPreview.offsetMapping,
+    ) {
+        val layout = textLayoutResult ?: return@LaunchedEffect
+        if (!hasFocus || !enabled || editorViewportHeightPx <= 0) return@LaunchedEffect
+
+        val transformedCaret = transformedPreview.offsetMapping
+            .originalToTransformed(fieldValue.selection.end)
+            .coerceIn(0, transformedPreview.text.length)
+        val caretLine = layout.getLineForOffset(transformedCaret)
+        val textTopPaddingPx = with(density) { 2.dp.toPx() }
+        val caretTop = layout.getLineTop(caretLine) + textTopPaddingPx
+        val caretBottom = layout.getLineBottom(caretLine) + textTopPaddingPx
+        val currentScrollTop = editorScrollState.value.toFloat()
+        val currentScrollBottom = currentScrollTop + editorViewportHeightPx
+        val requestedScrollTop = when {
+            caretTop < currentScrollTop -> caretTop
+            caretBottom > currentScrollBottom -> caretBottom - editorViewportHeightPx
+            else -> return@LaunchedEffect
+        }
+        val boundedScrollTop = requestedScrollTop.roundToInt().coerceIn(0, editorScrollState.maxValue)
+        if (boundedScrollTop != editorScrollState.value) editorScrollState.scrollTo(boundedScrollTop)
+    }
+
     Box(modifier) {
         Column(
             modifier = Modifier.fillMaxSize().padding(bottom = if (toolbarVisible) 52.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("行番号を表示", color = TaskChuteColors.SecondaryText, fontSize = 13.sp)
+                Switch(
+                    checked = showLineNumbers,
+                    onCheckedChange = { enabled ->
+                        showLineNumbers = enabled
+                        lineNumberPreferences.setShowLineNumbers(enabled)
+                    },
+                    modifier = Modifier.semantics { contentDescription = "行番号を表示" },
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .onSizeChanged { editorViewportHeightPx = it.height }
+                    .testTag("markdown-editor-scroll-viewport"),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize().verticalScroll(editorScrollState),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    if (showLineNumbers) {
+                        MarkdownLineNumberGutter(
+                            source = fieldValue.text,
+                            layout = textLayoutResult,
+                            offsetMapping = transformedPreview.offsetMapping,
+                            scrollState = editorScrollState,
+                            viewportHeightPx = editorViewportHeightPx,
+                            transformedTextLength = transformedPreview.text.length,
+                            modifier = Modifier.testTag("markdown-line-number-gutter"),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
                     .pointerInput(enabled) {
                         if (!enabled) return@pointerInput
                         awaitEachGesture {
@@ -618,7 +714,7 @@ fun MarkdownLiveEditor(
                             }
                         }
                     },
-            ) {
+                    ) {
                 BasicTextField(
                     value = fieldValue,
                     onValueChange = {
@@ -644,7 +740,7 @@ fun MarkdownLiveEditor(
                     visualTransformation = previewTransformation,
                     onTextLayout = { textLayoutResult = it },
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
                         .focusRequester(focusRequester)
                         .semantics {
                             contentDescription = "Markdown body"
@@ -652,12 +748,14 @@ fun MarkdownLiveEditor(
                         }
                         .onFocusChanged { hasFocus = it.isFocused },
                     decorationBox = { innerTextField ->
-                        Box(Modifier.fillMaxSize().padding(top = 2.dp)) {
+                        Box(Modifier.fillMaxWidth().padding(top = 2.dp)) {
                             if (fieldValue.text.isEmpty()) Text("本文を入力", color = TaskChuteColors.SecondaryText)
                             innerTextField()
                         }
                     },
                 )
+            }
+                }
             }
             footer()
         }
@@ -676,6 +774,123 @@ fun MarkdownLiveEditor(
         }
     }
 }
+
+@Composable
+private fun MarkdownLineNumberGutter(
+    source: String,
+    layout: TextLayoutResult?,
+    offsetMapping: OffsetMapping,
+    scrollState: ScrollState,
+    viewportHeightPx: Int,
+    transformedTextLength: Int,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val starts = remember(source) { markdownSourceLineStarts(source) }
+    val paint = remember(density) {
+        AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            textSize = with(density) { 12.sp.toPx() }
+        }
+    }
+    val sidePaddingPx = with(density) { 8.dp.roundToPx().toFloat() }
+    val gutterWidthPx = remember(paint, starts.size, sidePaddingPx) {
+        paint.measureText("9".repeat(starts.size.toString().length)).toInt() + sidePaddingPx.toInt() * 2
+    }
+    val textTopPaddingPx = with(density) { 2.dp.roundToPx().toFloat() }
+    val contentHeightPx = (layout?.size?.height ?: 0) + textTopPaddingPx.toInt()
+    val gutterHeight = with(density) { contentHeightPx.toDp() }
+    val visibleNumbers = remember(
+        source,
+        layout,
+        offsetMapping,
+        scrollState.value,
+        viewportHeightPx,
+        transformedTextLength,
+    ) {
+        layout?.let {
+            visibleMarkdownLineNumberPlacements(
+                source = source,
+                starts = starts,
+                layout = it,
+                offsetMapping = offsetMapping,
+                scrollOffsetPx = scrollState.value,
+                viewportHeightPx = viewportHeightPx.takeIf { height -> height > 0 }
+                    ?: (it.size.height - scrollState.maxValue),
+                textTopPaddingPx = textTopPaddingPx,
+                transformedTextLength = transformedTextLength,
+            )
+        }.orEmpty()
+    }
+
+    Layout(
+        content = {
+            visibleNumbers.forEach { placement ->
+                Text(
+                    text = placement.lineNumber.toString(),
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    modifier = Modifier.semantics {
+                        contentDescription = "markdown-line-number-${placement.lineNumber}"
+                        hideFromAccessibility()
+                    },
+                )
+            }
+        },
+        modifier = modifier.width(with(density) { gutterWidthPx.toDp() }).height(gutterHeight),
+    ) { measurables, _ ->
+        val placeables = measurables.map { it.measure(androidx.compose.ui.unit.Constraints(maxWidth = gutterWidthPx)) }
+        layout(gutterWidthPx, contentHeightPx) {
+            placeables.forEachIndexed { index, placeable ->
+                val placement = visibleNumbers[index]
+                val firstBaseline = placeable[FirstBaseline].takeUnless { it == androidx.compose.ui.layout.AlignmentLine.Unspecified } ?: placeable.height
+                placeable.placeRelative(
+                    x = gutterWidthPx - sidePaddingPx.toInt() - placeable.width,
+                    y = (placement.baselinePx - firstBaseline).toInt(),
+                )
+            }
+        }
+    }
+}
+
+private data class MarkdownLineNumberPlacement(val lineNumber: Int, val baselinePx: Float)
+
+private fun visibleMarkdownLineNumberPlacements(
+    source: String,
+    starts: List<Int>,
+    layout: TextLayoutResult,
+    offsetMapping: OffsetMapping,
+    scrollOffsetPx: Int,
+    viewportHeightPx: Int,
+    textTopPaddingPx: Float,
+    transformedTextLength: Int,
+): List<MarkdownLineNumberPlacement> {
+    if (viewportHeightPx <= 0 || starts.isEmpty()) return emptyList()
+
+    val scrollTop = scrollOffsetPx.toFloat()
+    val scrollBottom = scrollTop + viewportHeightPx
+    val firstVisibleVisualLine = layout.getLineForVerticalPosition((scrollTop - textTopPaddingPx).coerceAtLeast(0f))
+    val lastVisibleVisualLine = layout.getLineForVerticalPosition((scrollBottom - textTopPaddingPx).coerceAtLeast(0f))
+    val result = mutableListOf<MarkdownLineNumberPlacement>()
+    for (visualLine in firstVisibleVisualLine..lastVisibleVisualLine) {
+        val transformedStart = layout.getLineStart(visualLine)
+        val sourceOffset = offsetMapping.transformedToOriginal(transformedStart).coerceIn(0, source.length)
+        val sourceLineIndex = markdownSourceLineIndexAt(starts, sourceOffset)
+        val sourceLineStart = starts[sourceLineIndex]
+        val firstVisualLine = layout.getLineForOffset(
+            offsetMapping.originalToTransformed(sourceLineStart).coerceIn(0, transformedTextLength),
+        )
+        if (visualLine != firstVisualLine) continue
+
+        val baseline = layout.getLineBaseline(visualLine) + textTopPaddingPx
+        if (baseline in scrollTop..scrollBottom) {
+            result += MarkdownLineNumberPlacement(sourceLineIndex + 1, baseline)
+        }
+    }
+    return result
+}
+
 @Composable
 internal fun MarkdownImeToolbar(
     modifier: Modifier,
