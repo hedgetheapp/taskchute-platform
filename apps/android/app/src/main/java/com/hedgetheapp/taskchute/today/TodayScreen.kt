@@ -152,6 +152,8 @@ import kotlin.math.roundToInt
 import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.document.NotesController
 import com.hedgetheapp.taskchute.document.TaskNoteBottomSheet
+import com.hedgetheapp.taskchute.document.AndroidInternalDocumentRoute
+import com.hedgetheapp.taskchute.document.InternalDocumentLinkSearchResult
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
@@ -194,6 +196,9 @@ fun TodayScreen(
     onOpenTaskNote: (TodayTask) -> Unit = {},
     taskNoteController: NotesController? = null,
     onNavigateReview: () -> Unit = {},
+    onOpenInternalLink: (AndroidInternalDocumentRoute) -> Unit = {},
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)? = null,
+    onNavigateInternalBack: (() -> Unit)? = null,
 ) {
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
@@ -463,10 +468,12 @@ fun TodayScreen(
         }
     }
 
-    if (taskNoteSheetTask != null && taskNoteController != null) {
+    if (taskNoteController != null && (taskNoteSheetTask != null || taskNoteController.state.editor?.origin == com.hedgetheapp.taskchute.document.NoteEditorOrigin.TODAY_TASK)) {
         TaskNoteBottomSheet(
             controller = taskNoteController,
-            onDismiss = { taskNoteSheetTask = null },
+            onDismiss = { if (onNavigateInternalBack != null) onNavigateInternalBack() else taskNoteSheetTask = null },
+            onOpenInternalLink = onOpenInternalLink,
+            onSearchInternalLinks = onSearchInternalLinks,
         )
     }
 

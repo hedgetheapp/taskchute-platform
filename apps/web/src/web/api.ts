@@ -32,6 +32,7 @@ import type {
   DeleteProjectResult,
   DailyPrimaryDocument,
   DailyPrimaryDocumentListProjection,
+  InternalDocumentLinkSearchProjection,
   EnsureDailyPrimaryDocumentRequest,
   EnsureDailyPrimaryDocumentResult,
   UpdateDailyPrimaryDocumentRequest,
@@ -348,6 +349,14 @@ export const api = {
   },
   loadDailyPrimaryDocument(documentId: string): Promise<DailyPrimaryDocument> {
     return requestJson(`/api/v1/daily-primary-documents/${encodeURIComponent(documentId)}`);
+  },
+  loadDailyPrimaryDocumentByDate(logicalDate: string): Promise<DailyPrimaryDocument> {
+    return requestJson(`/api/v1/daily-primary-documents/by-date?logical_date=${encodeURIComponent(logicalDate)}`);
+  },
+  searchInternalDocumentLinks(query: string, cursor?: string | null): Promise<InternalDocumentLinkSearchProjection> {
+    const params = new URLSearchParams({ q: query });
+    if (cursor) params.set("cursor", cursor);
+    return requestJson(`/api/v1/documents/search?${params.toString()}`);
   },
   ensureDailyPrimaryDocument(body: EnsureDailyPrimaryDocumentRequest): Promise<EnsureDailyPrimaryDocumentResult> {
     return requestJson(`/api/v1/taskchute-days/${encodeURIComponent(body.taskchute_day_id)}/daily-primary-document`, jsonPost("", body));

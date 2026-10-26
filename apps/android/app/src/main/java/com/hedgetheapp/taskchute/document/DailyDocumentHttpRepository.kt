@@ -8,6 +8,7 @@ import com.hedgetheapp.taskchute.today.TodayHttpResponse
 interface DailyDocumentRepository {
     fun listDaily(): DailyListResult
     fun fetchDaily(documentId: String): DailyResult
+    fun fetchDailyByDate(logicalDate: String): DailyResult = DailyResult.Missing
     fun ensureDaily(request: DailyEnsureRequest): DailyResult
     fun updateDaily(request: DailyUpdateRequest): DailyResult
 }
@@ -29,6 +30,17 @@ class DailyDocumentHttpRepository(
     }
 
     override fun fetchDaily(documentId: String): DailyResult = when (val response = execute("GET", "/api/v1/daily-primary-documents/${JsonEncoding.pathSegment(documentId)}", null)) {
+        is HttpResult.Success -> runCatching { DailyResult.Success(parseDaily(response.body.objectValue())) }
+            .getOrElse { DailyResult.Failure("デイリーノートを読み取れませんでした。再試行してください。") }
+        HttpResult.Unauthorized -> DailyResult.Unauthorized
+        is HttpResult.Failure -> if (response.notFound) DailyResult.Missing else DailyResult.Failure(response.message)
+    }
+
+    override fun fetchDailyByDate(logicalDate: String): DailyResult = when (val response = execute(
+        "GET",
+        "/api/v1/daily-primary-documents/by-date?logical_date=${java.net.URLEncoder.encode(logicalDate, Charsets.UTF_8.name())}",
+        null,
+    )) {
         is HttpResult.Success -> runCatching { DailyResult.Success(parseDaily(response.body.objectValue())) }
             .getOrElse { DailyResult.Failure("デイリーノートを読み取れませんでした。再試行してください。") }
         HttpResult.Unauthorized -> DailyResult.Unauthorized

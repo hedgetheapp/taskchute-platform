@@ -7,6 +7,21 @@ import org.junit.Test
 
 class DailyDocumentHttpRepositoryTest {
     @Test
+    fun exactDateLookupIsReadOnlyAndOwnerShellScoped() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DailyDocumentHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, """{"document_id":"doc-1","kind":"daily_primary","taskchute_day_id":"day-1","logical_date":"2026-09-23","markdown_body":"本文","revision":1,"created_at":"2026-09-23T00:00:00Z","updated_at":"2026-09-23T00:01:00Z"}""")
+        })
+
+        val result = repository.fetchDailyByDate("2026-09-23") as DailyResult.Success
+
+        assertEquals(Triple("GET", "/api/v1/daily-primary-documents/by-date?logical_date=2026-09-23", null), requests.single())
+        assertEquals("2026-09-23", result.document.logicalDate)
+        assertEquals(1, requests.size)
+    }
+
+    @Test
     fun listParsesEstablishedDaysWithoutCreatingDocuments() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = DailyDocumentHttpRepository(

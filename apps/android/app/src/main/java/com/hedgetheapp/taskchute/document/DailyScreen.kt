@@ -49,6 +49,10 @@ fun DailyScreen(
     onNavigateNotes: () -> Unit,
     onNavigateSettings: () -> Unit,
     onNavigateReview: () -> Unit = {},
+    initialDate: String? = null,
+    onOpenInternalLink: (AndroidInternalDocumentRoute) -> Unit = {},
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)? = null,
+    onNavigateInternalBack: (() -> Unit)? = null,
 ) {
     val state = controller.state
     val cursorIdentity = dailyCursorEditorIdentity(state)
@@ -65,8 +69,10 @@ fun DailyScreen(
         if (controller.hasUnsavedChanges) navigationRequested = action else action()
     }
 
-    BackHandler(enabled = true) { leave(onNavigateToday) }
-    LaunchedEffect(controller) { controller.loadCurrent() }
+    BackHandler(enabled = true) { leave(onNavigateInternalBack ?: onNavigateToday) }
+    LaunchedEffect(controller, initialDate) {
+        if (initialDate == null) controller.loadCurrent() else controller.loadExistingDate(initialDate)
+    }
 
     navigationRequested?.let { action ->
         androidx.compose.material3.AlertDialog(
@@ -130,6 +136,8 @@ fun DailyScreen(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         editorSessionKey = cursorIdentity?.sessionKey ?: state.selectedDate ?: Unit,
                         cursorDocumentId = cursorIdentity?.documentId,
+                        onOpenInternalLink = onOpenInternalLink,
+                        onSearchInternalLinks = onSearchInternalLinks,
                         onBodyFocusChanged = { editorBodyFocused = it },
                         footer = {
                             Text(

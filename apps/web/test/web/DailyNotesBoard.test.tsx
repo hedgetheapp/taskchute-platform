@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   loadDay: vi.fn(),
   loadDailyPrimaryDocuments: vi.fn(),
   loadDailyPrimaryDocument: vi.fn(),
+  loadDailyPrimaryDocumentByDate: vi.fn(),
   ensureDailyPrimaryDocument: vi.fn(),
   updateDailyPrimaryDocument: vi.fn(),
 }));
@@ -62,6 +63,9 @@ beforeEach(() => {
   mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate === "2026-09-23" ? day("day-23", "2026-09-23") : day("day-24", "2026-09-24"));
   mocks.loadDailyPrimaryDocuments.mockResolvedValue({ days: summaries });
   mocks.loadDailyPrimaryDocument.mockImplementation(async (documentId: string) => documentId === "doc-23" ? document("doc-23", "day-23", "2026-09-23") : document("doc-24", "day-24", "2026-09-24"));
+  mocks.loadDailyPrimaryDocumentByDate.mockImplementation(async (logicalDate: string) => logicalDate === "2026-09-23"
+    ? document("doc-23", "day-23", logicalDate)
+    : document("doc-24", "day-24", logicalDate));
 });
 
 describe("DailyNotesBoard corrective UI", () => {
@@ -82,5 +86,36 @@ describe("DailyNotesBoard corrective UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "2026-09-23" }));
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledWith("2026-09-23"));
     expect(await screen.findByRole("heading", { name: "2026-09-23" })).toBeTruthy();
+  });
+
+  it("opens an exact date route without resolving a Day through the mutating ensure path", async () => {
+    render(
+      <DailyNotesBoard
+        onUnauthorized={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onExit={vi.fn()}
+        initialDate="2026-09-23"
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "2026-09-23" })).toBeTruthy();
+    expect(mocks.loadDailyPrimaryDocumentByDate).toHaveBeenCalledWith("2026-09-23");
+    expect(mocks.loadDay).not.toHaveBeenCalled();
+    expect(mocks.ensureDailyPrimaryDocument).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed deep-link dates before making API requests", async () => {
+    render(
+      <DailyNotesBoard
+        onUnauthorized={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onExit={vi.fn()}
+        initialDate="2026-02-30"
+      />,
+    );
+
+    expect(await screen.findByText("指定されたデイリーノートは利用できません。" )).toBeTruthy();
+    expect(mocks.loadDailyPrimaryDocumentByDate).not.toHaveBeenCalled();
+    expect(mocks.ensureDailyPrimaryDocument).not.toHaveBeenCalled();
   });
 });

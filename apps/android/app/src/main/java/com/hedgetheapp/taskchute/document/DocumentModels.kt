@@ -184,6 +184,11 @@ interface AndroidDocumentRepository {
 
     fun fetchStandalone(documentId: String): DocumentResult
 
+    fun resolvePermalink(documentId: String): DocumentResult = DocumentResult.Missing
+
+    fun searchInternalLinks(query: String, cursor: String?): InternalDocumentLinkSearchResult =
+        InternalDocumentLinkSearchResult.Failure("候補検索を利用できません。")
+
     fun createStandalone(request: StandaloneCreateRequest): DocumentResult
 
     fun updateStandalone(request: StandaloneUpdateRequest): DocumentResult

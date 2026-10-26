@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.document
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.OffsetMapping
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -13,6 +14,69 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarkdownLiveEditorTest {
+    @Test
+    fun internalMarkdownRoutesAcceptOnlyExactOwnerShellRouteShapes() {
+        val id = "018f47a2-7b31-7abc-8def-1234567890ab"
+        assertEquals(AndroidInternalDocumentRoute.Note(id), parseAndroidInternalDocumentRoute("/?view=note&document=$id"))
+        assertEquals(AndroidInternalDocumentRoute.Daily("2026-10-26"), parseAndroidInternalDocumentRoute("/?view=daily&date=2026-10-26"))
+        assertNull(parseAndroidInternalDocumentRoute("//evil.example/?view=note&document=$id"))
+        assertNull(parseAndroidInternalDocumentRoute("https://evil.example/?view=note&document=$id"))
+        assertNull(parseAndroidInternalDocumentRoute("/?view=note&document=$id&fallback=1"))
+        assertNull(parseAndroidInternalDocumentRoute("/?view=daily&date=2026-02-30"))
+        assertNull(parseAndroidInternalDocumentRoute("/?view=note&view=daily&document=$id"))
+        assertNull(parseAndroidInternalDocumentRoute("javascript:alert(1)"))
+        assertTrue(markdownDestinationIsSafe("https://example.com/page"))
+        assertFalse(markdownDestinationIsSafe("javascript:alert(1)"))
+    }
+
+    @Test
+    fun internalMarkdownLinkActivationUsesTheVisibleLabelSourceOffsets() {
+        val id = "018f47a2-7b31-7abc-8def-1234567890ab"
+        val source = "before [Daily](/?view=daily&date=2026-10-26) after"
+        val hits = renderedMarkdownLinkHits(source, object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = offset
+            override fun transformedToOriginal(offset: Int) = offset
+        })
+
+        assertEquals(1, hits.size)
+        assertEquals("/?view=daily&date=2026-10-26", hits.single().destination)
+        assertEquals(source.indexOf("Daily"), hits.single().sourceStart)
+        assertNull(parseAndroidInternalDocumentRoute("/?view=note&document=not-a-uuid"))
+        assertEquals(AndroidInternalDocumentRoute.Note(id), parseAndroidInternalDocumentRoute("/?document=$id&view=note"))
+    }
+
+    @Test
+    fun linkPickerWaitsForCompositionAndInsertionReplacesOnlyTheCurrentQueryToken() {
+        val id = "018f47a2-7b31-7abc-8def-1234567890ab"
+        val candidate = InternalDocumentLinkCandidate(
+            documentId = id,
+            kind = InternalDocumentLinkKind.STANDALONE,
+            label = "A [note]",
+            context = null,
+            archived = true,
+            logicalDate = null,
+        )
+        val input = TextFieldValue("prefix [[A", selection = TextRange(10))
+        val token = activeInternalLinkQuery(input)
+        assertEquals(InternalLinkQueryToken(7, 10, "A"), token)
+        assertNull(activeInternalLinkQuery(input.copy(composition = TextRange(8, 10))))
+        val inserted = insertInternalMarkdownLink(input, requireNotNull(token), candidate)
+        assertEquals("prefix [A \\[note\\]](/?view=note&document=$id)", inserted?.text)
+        assertEquals(inserted?.text?.length, inserted?.selection?.end)
+        assertNull(insertInternalMarkdownLink(input, requireNotNull(token).copy(query = "stale"), candidate))
+    }
+
+    @Test
+    fun internalLinkSearchIgnoresStaleComposingAndDismissedResults() {
+        val current = TextFieldValue("[[Atlas", selection = TextRange(7))
+        val token = requireNotNull(activeInternalLinkQuery(current))
+
+        assertTrue(isInternalLinkSearchCurrent(token, current, null))
+        assertFalse(isInternalLinkSearchCurrent(token, TextFieldValue("[[Other", selection = TextRange(7)), null))
+        assertFalse(isInternalLinkSearchCurrent(token, current, token))
+        assertFalse(isInternalLinkSearchCurrent(token, current.copy(composition = TextRange(2, 7)), null))
+    }
+
     @Test
     fun logicalLineStartsCountEmptyConsecutiveAndTrailingLinesWithoutCountingSoftWraps() {
         assertEquals(listOf(0), markdownSourceLineStarts(""))

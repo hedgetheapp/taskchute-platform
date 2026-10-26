@@ -125,9 +125,11 @@ import {
   isEnsureDailyPrimaryDocumentRequest,
   isUpdateDailyPrimaryDocumentRequest,
   loadDailyPrimaryDocument,
+  loadDailyPrimaryDocumentByDate,
   loadDailyPrimaryDocuments,
   updateDailyPrimaryDocument,
 } from "./application/daily-primary-documents";
+import { searchInternalDocumentLinks } from "./application/internal-document-links";
 import { affectsWearRunningProjection, realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
 import { hasCommittedMutation, mutationResponse } from "./mutation-response";
 import {
@@ -254,6 +256,15 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     return Response.json(await loadStandaloneDocuments(env.APP_DB, principal.appUserId, archived === "true"));
   }
+  if (request.method === "GET" && url.pathname === "/api/v1/documents/search") {
+    if ([...url.searchParams.keys()].some((key) => key !== "q" && key !== "cursor")
+      || url.searchParams.getAll("q").length > 1 || url.searchParams.getAll("cursor").length > 1) {
+      throw new HttpError(400, "malformed_request", "Invalid document search parameters");
+    }
+    const query = url.searchParams.get("q") ?? "";
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+    return Response.json(await searchInternalDocumentLinks(env.APP_DB, principal.appUserId, query, cursor));
+  }
   const projectPrimaryByProjectMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/primary-document$/);
   if (request.method === "GET" && projectPrimaryByProjectMatch) {
     return Response.json(await loadProjectPrimaryDocument(env.APP_DB, principal.appUserId, decodeURIComponent(projectPrimaryByProjectMatch[1])));
@@ -301,6 +312,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid UpdateTaskPrimaryDocument request");
     }
     return mutationResponse(await updateTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/daily-primary-documents/by-date") {
+    if ([...url.searchParams.keys()].some((key) => key !== "logical_date")
+      || url.searchParams.getAll("logical_date").length !== 1) {
+      throw new HttpError(400, "malformed_request", "Invalid Daily Note date");
+    }
+    const logicalDate = url.searchParams.get("logical_date")!;
+    if (!isLogicalDate(logicalDate)) throw new HttpError(400, "malformed_request", "Invalid Daily Note date");
+    return Response.json(await loadDailyPrimaryDocumentByDate(env.APP_DB, principal.appUserId, logicalDate));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/daily-primary-documents") {
     return Response.json(await loadDailyPrimaryDocuments(env.APP_DB, principal.appUserId));

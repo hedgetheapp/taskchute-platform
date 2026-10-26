@@ -109,6 +109,9 @@ fun NotesScreen(
     onNavigateSettings: () -> Unit,
     onNavigateDaily: () -> Unit = {},
     onNavigateReview: () -> Unit = {},
+    onOpenInternalLink: (AndroidInternalDocumentRoute) -> Unit = {},
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)? = null,
+    onNavigateInternalBack: (() -> Unit)? = null,
 ) {
     val state = controller.state
     val density = LocalDensity.current
@@ -137,7 +140,8 @@ fun NotesScreen(
     fun leaveEditorToOrigin() {
         val origin = controller.state.editor?.origin
         attemptLeave {
-            if (origin == NoteEditorOrigin.TODAY_TASK) onNavigateToday()
+            if (onNavigateInternalBack != null) onNavigateInternalBack()
+            else if (origin == NoteEditorOrigin.TODAY_TASK) onNavigateToday()
         }
     }
 
@@ -210,6 +214,8 @@ fun NotesScreen(
                     state.editor,
                     Modifier.fillMaxSize().windowInsetsPadding(imeInsets),
                     onBack = { attemptLeave(::leaveEditorToOrigin) },
+                    onOpenInternalLink = onOpenInternalLink,
+                    onSearchInternalLinks = onSearchInternalLinks,
                 )
             }
         }
@@ -258,6 +264,8 @@ fun NotesScreen(
 fun TaskNoteBottomSheet(
     controller: NotesController,
     onDismiss: () -> Unit,
+    onOpenInternalLink: (AndroidInternalDocumentRoute) -> Unit = {},
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)? = null,
 ) {
     val state = controller.state
     val density = LocalDensity.current
@@ -301,6 +309,8 @@ fun TaskNoteBottomSheet(
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 2.dp),
                         editorSessionKey = cursorIdentity.sessionId,
                         cursorDocumentId = cursorIdentity.documentId,
+                        onOpenInternalLink = onOpenInternalLink,
+                        onSearchInternalLinks = onSearchInternalLinks,
                         onBodyFocusChanged = { bodyFocused = it },
                         footer = {
                             HorizontalDivider(color = TaskChuteColors.Divider)
@@ -494,7 +504,14 @@ private fun formatDocumentTimestamp(value: String): String {
 }
 
 @Composable
-private fun NoteEditor(controller: NotesController, editor: NoteEditorState, modifier: Modifier, onBack: () -> Unit) {
+private fun NoteEditor(
+    controller: NotesController,
+    editor: NoteEditorState,
+    modifier: Modifier,
+    onBack: () -> Unit,
+    onOpenInternalLink: (AndroidInternalDocumentRoute) -> Unit,
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)?,
+) {
     val cursorIdentity = noteCursorEditorIdentity(editor)
     val density = LocalDensity.current
     val imeInsets = LocalMarkdownEditorImeInsets.current ?: WindowInsets.ime
@@ -545,6 +562,8 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             modifier = Modifier.fillMaxWidth().weight(1f),
             editorSessionKey = cursorIdentity.sessionId,
             cursorDocumentId = cursorIdentity.documentId,
+            onOpenInternalLink = onOpenInternalLink,
+            onSearchInternalLinks = onSearchInternalLinks,
             onBodyFocusChanged = { bodyFocused = it },
             footer = {
                 Text(

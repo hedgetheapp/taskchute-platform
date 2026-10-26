@@ -1,7 +1,6 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.compose.ui.text.input.OffsetMapping
-import java.net.URI
 
 internal data class RenderedTaskCheckboxHit(
     val sourceStart: Int,
@@ -97,10 +96,7 @@ private fun trimUrl(raw: String): String? {
         end -= 1
     }
     val value = raw.substring(0, end)
-    if (value.isBlank()) return null
-    val uri = runCatching { URI(value) }.getOrNull() ?: return null
-    if (!uri.scheme.equals("http", ignoreCase = true) && !uri.scheme.equals("https", ignoreCase = true)) return null
-    if (uri.rawAuthority.isNullOrBlank()) return null
+    if (value.isBlank() || !markdownDestinationIsSafe(value)) return null
     return value
 }
 
@@ -154,6 +150,6 @@ private fun activeLineStarts(source: String, selection: MarkdownSelection?): Set
 
 private const val TASK_CHECKBOX_MARKER_LENGTH = 6
 private val TASK_CHECKBOX_PATTERN = Regex("^- \\[([ xX])\\] (.*)$")
-private val MARKDOWN_LINK_PATTERN = Regex("\\[([^]\\r\\n]+)\\]\\((https?://[^\\s)]+)\\)", RegexOption.IGNORE_CASE)
+private val MARKDOWN_LINK_PATTERN = Regex("\\[([^]\\r\\n]+)\\]\\(([^\\s)]+)\\)")
 private val PLAIN_URL_PATTERN = Regex("https?://[^\\s<>\\\"']+", RegexOption.IGNORE_CASE)
 private val TRAILING_URL_PUNCTUATION = setOf('.', ',', ';', ':', '!', '?', '\u3002', '\u3001', '\uff0c', '\uff1b', '\uff1a', '\uff01', '\uff1f')

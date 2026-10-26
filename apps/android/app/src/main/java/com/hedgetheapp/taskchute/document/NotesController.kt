@@ -304,6 +304,40 @@ class NotesController(
         reconcileDocumentInvalidation()
     }
 
+    suspend fun resolveInternalLink(documentId: String): DocumentResult =
+        withContext(Dispatchers.IO) { repository.resolvePermalink(documentId) }
+
+    suspend fun searchInternalLinks(query: String, cursor: String?): InternalDocumentLinkSearchResult =
+        withContext(Dispatchers.IO) { repository.searchInternalLinks(query, cursor) }
+
+    /** Adopt a body already resolved through the authenticated read-only permalink endpoint. */
+    fun openResolvedInternalLink(document: AndroidDocument) {
+        if (hasUnsavedChanges || state.selectionModeActive) return
+        editorGeneration += 1
+        val generation = editorGeneration
+        val editor = when (document.kind) {
+            DocumentKind.STANDALONE -> editorFor(document, origin = NoteEditorOrigin.STANDALONE_LIST, sessionId = generation)
+            DocumentKind.TASK_PRIMARY -> editorFor(
+                document, taskTitle = document.title, taskId = document.taskId,
+                origin = NoteEditorOrigin.TODAY_TASK, sessionId = generation,
+            )
+            DocumentKind.PROJECT_PRIMARY -> editorFor(
+                document, projectTitle = document.title, projectId = document.projectId,
+                origin = NoteEditorOrigin.PROJECT_LIST, sessionId = generation,
+            )
+        }
+        state = state.copy(
+            editor = editor,
+            errorMessage = null,
+            unresolvedTaskEnsure = null,
+            unresolvedTaskTitle = null,
+            unresolvedProjectEnsure = null,
+            unresolvedProjectTitle = null,
+            taskEnsureSaving = false,
+            projectEnsureSaving = false,
+        )
+    }
+
     fun setArchivedView(archived: Boolean) {
         if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null || state.selectionModeActive) return
         if (archived == state.archivedView) return

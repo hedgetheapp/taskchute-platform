@@ -34,13 +34,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +89,9 @@ import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import android.graphics.Paint as AndroidPaint
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 internal val LocalMarkdownEditorImeInsets = staticCompositionLocalOf<WindowInsets?> { null }
 
@@ -946,6 +953,8 @@ fun MarkdownLiveEditor(
     modifier: Modifier,
     footer: @Composable ColumnScope.() -> Unit = {},
     onOpenUrl: ((String) -> Unit)? = null,
+    onOpenInternalLink: ((AndroidInternalDocumentRoute) -> Unit)? = null,
+    onSearchInternalLinks: (suspend (String, String?) -> InternalDocumentLinkSearchResult)? = null,
     onTextFieldValueChange: ((TextFieldValue) -> Unit)? = null,
     editorSessionKey: Any = Unit,
     cursorDocumentId: String? = null,
@@ -974,6 +983,11 @@ fun MarkdownLiveEditor(
     var restoreBodyFocusAfterHeadingPicker by remember(editorSessionKey) { mutableStateOf(false) }
     var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
+    var dismissedInternalLinkQuery by remember(editorSessionKey) { mutableStateOf<InternalLinkQueryToken?>(null) }
+    var internalLinkSearchPage by remember(editorSessionKey) { mutableStateOf<InternalDocumentLinkSearchPage?>(null) }
+    var internalLinkSearchLoading by remember(editorSessionKey) { mutableStateOf(false) }
+    var internalLinkSearchError by remember(editorSessionKey) { mutableStateOf<String?>(null) }
+    var internalLinkNextPageLoading by remember(editorSessionKey) { mutableStateOf(false) }
     var hasFocus by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     var editorViewportHeightPx by remember { mutableIntStateOf(0) }
@@ -1035,6 +1049,11 @@ fun MarkdownLiveEditor(
     val latestCheckboxHits = rememberUpdatedState(checkboxHits)
     val latestLinkHits = rememberUpdatedState(linkHits)
     val latestOpenUrl = rememberUpdatedState(onOpenUrl)
+    val latestOpenInternalLink = rememberUpdatedState(onOpenInternalLink)
+    val latestSearchInternalLinks = rememberUpdatedState(onSearchInternalLinks)
+    val editorScope = rememberCoroutineScope()
+    val rawInternalLinkQuery = activeInternalLinkQuery(fieldValue)
+    val activeLinkPickerToken = rawInternalLinkQuery?.takeIf { it != dismissedInternalLinkQuery }
     val openUrl = rememberUpdatedState<(String) -> Unit> { destination ->
         val customOpener = latestOpenUrl.value
         if (customOpener != null) {
@@ -1042,6 +1061,10 @@ fun MarkdownLiveEditor(
         } else {
             runCatching { uriHandler.openUri(destination) }
         }
+    }
+    val openMarkdownDestination = rememberUpdatedState<(String) -> Unit> { destination ->
+        val internal = parseAndroidInternalDocumentRoute(destination)
+        if (internal != null) latestOpenInternalLink.value?.invoke(internal) else openUrl.value(destination)
     }
     val toggleCheckbox = rememberUpdatedState<(Int) -> Unit> { sourceStart ->
         if (enabled) {
@@ -1091,7 +1114,7 @@ fun MarkdownLiveEditor(
             CustomAccessibilityAction(
                 label = "リンクを開く: ${hit.destination}",
                 action = {
-                    openUrl.value(hit.destination)
+                    openMarkdownDestination.value(hit.destination)
                     true
                 },
             )
@@ -1111,6 +1134,35 @@ fun MarkdownLiveEditor(
                 cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(fieldValue.selection))
             }
         }
+    }
+
+    LaunchedEffect(activeLinkPickerToken?.start, activeLinkPickerToken?.query) {
+        val token = activeLinkPickerToken
+        if (token == null) {
+            internalLinkSearchPage = null
+            internalLinkSearchError = null
+            internalLinkSearchLoading = false
+            return@LaunchedEffect
+        }
+        val search = latestSearchInternalLinks.value ?: return@LaunchedEffect
+        internalLinkSearchPage = null
+        internalLinkSearchError = null
+        internalLinkSearchLoading = true
+        delay(350)
+        val result = try {
+            search(token.query, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            InternalDocumentLinkSearchResult.Failure("候補を読み込めませんでした。再試行してください。")
+        }
+        if (!isInternalLinkSearchCurrent(token, latestTextFieldValue.value, dismissedInternalLinkQuery)) return@LaunchedEffect
+        when (result) {
+            is InternalDocumentLinkSearchResult.Success -> internalLinkSearchPage = result.page
+            InternalDocumentLinkSearchResult.Unauthorized -> internalLinkSearchError = "認証が必要です。"
+            is InternalDocumentLinkSearchResult.Failure -> internalLinkSearchError = result.message
+        }
+        internalLinkSearchLoading = false
     }
 
     LaunchedEffect(headingPickerOpen, restoreBodyFocusAfterHeadingPicker, enabled) {
@@ -1290,7 +1342,7 @@ fun MarkdownLiveEditor(
                                         fieldValue = fieldValue.copy(selection = selectionAtDown)
                                         onTextFieldValueObserved(fieldValue)
                                     }
-                                    openUrl.value(link.destination)
+                                    openMarkdownDestination.value(link.destination)
                                 }
                             }
                         }
@@ -1457,6 +1509,84 @@ fun MarkdownLiveEditor(
                     headingPickerOpen = false
                     restoreBodyFocusAfterHeadingPicker = enabled
                 },
+            )
+        }
+        activeLinkPickerToken?.let { token ->
+            AlertDialog(
+                onDismissRequest = { dismissedInternalLinkQuery = token },
+                title = { Text("リンク先を選択") },
+                text = {
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(if (token.query.isBlank()) "ノート名または日付を入力" else "「${token.query}」の候補", style = MaterialTheme.typography.bodySmall)
+                        when {
+                            internalLinkSearchLoading && internalLinkSearchPage == null -> CircularProgressIndicator()
+                            internalLinkSearchError != null -> Text(internalLinkSearchError!!, color = MaterialTheme.colorScheme.error)
+                            internalLinkSearchPage?.candidates.isNullOrEmpty() -> Text("候補がありません。", color = TaskChuteColors.SecondaryText)
+                        }
+                        internalLinkSearchPage?.candidates.orEmpty().forEach { candidate ->
+                            TextButton(
+                                onClick = {
+                                    val current = fieldValue
+                                    val currentToken = activeInternalLinkQuery(current)
+                                    val next = if (currentToken == token) insertInternalMarkdownLink(current, token, candidate) else null
+                                    if (next != null) {
+                                        reversibleToolbarEdit = null
+                                        fieldValue = next
+                                        onValueChange(next.text)
+                                        onTextFieldValueObserved(next)
+                                        dismissedInternalLinkQuery = null
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(candidate.label, maxLines = 1)
+                                    val kind = when (candidate.kind) {
+                                        InternalDocumentLinkKind.STANDALONE -> "ノート"
+                                        InternalDocumentLinkKind.TASK_PRIMARY -> "タスクノート"
+                                        InternalDocumentLinkKind.PROJECT_PRIMARY -> "プロジェクトノート"
+                                        InternalDocumentLinkKind.DAILY_PRIMARY -> "デイリーノート"
+                                    }
+                                    val details = listOfNotNull(kind, candidate.context, if (candidate.archived) "アーカイブ済み" else null).joinToString(" · ")
+                                    Text(details, style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+                                }
+                            }
+                        }
+                        internalLinkSearchPage?.nextCursor?.let { cursor ->
+                            TextButton(
+                                enabled = !internalLinkNextPageLoading,
+                                onClick = {
+                                    val search = latestSearchInternalLinks.value ?: return@TextButton
+                                    editorScope.launch {
+                                        internalLinkNextPageLoading = true
+                                        val result = runCatching { search(token.query, cursor) }
+                                            .getOrElse { InternalDocumentLinkSearchResult.Failure("候補を読み込めませんでした。再試行してください。") }
+                                        if (!isInternalLinkSearchCurrent(token, latestTextFieldValue.value, dismissedInternalLinkQuery)) {
+                                            internalLinkNextPageLoading = false
+                                            return@launch
+                                        }
+                                        when (result) {
+                                            is InternalDocumentLinkSearchResult.Success -> {
+                                                val previous = internalLinkSearchPage
+                                                internalLinkSearchPage = InternalDocumentLinkSearchPage(
+                                                    previous?.candidates.orEmpty() + result.page.candidates,
+                                                    result.page.nextCursor,
+                                                )
+                                            }
+                                            InternalDocumentLinkSearchResult.Unauthorized -> internalLinkSearchError = "認証が必要です。"
+                                            is InternalDocumentLinkSearchResult.Failure -> internalLinkSearchError = result.message
+                                        }
+                                        internalLinkNextPageLoading = false
+                                    }
+                                },
+                            ) { Text(if (internalLinkNextPageLoading) "読み込み中…" else "さらに候補を表示") }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { dismissedInternalLinkQuery = token }) { Text("キャンセル") } },
             )
         }
     }

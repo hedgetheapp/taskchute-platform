@@ -68,6 +68,75 @@ class DailyController(
         sessionScope.launch { loadDate(null) }
     }
 
+    /** Open only an already-established Day and materialized Daily Note. This path never calls loadDay or Ensure. */
+    fun loadExistingDate(logicalDate: String) {
+        dailySurfaceLoaded = true
+        lastRequestedLogicalDate = logicalDate
+        if (state.document?.logicalDate == logicalDate && state.selectedDate == logicalDate) return
+        val generation = ++loadGeneration
+        val editGenerationAtRequest = localEditGeneration
+        state = state.copy(loading = true, errorMessage = null, canRetryLoad = false)
+        sessionScope.launch {
+            val result = withContext(Dispatchers.IO) { repository.fetchDailyByDate(logicalDate) }
+            if (generation != loadGeneration) return@launch
+            if (editGenerationAtRequest != localEditGeneration || state.dirty || state.saving || state.blocked) {
+                state = state.copy(loading = false, errorMessage = "未保存の変更を保持するため、別の日の読み込みを保留しました。")
+                return@launch
+            }
+            when (result) {
+                is DailyResult.Success -> {
+                    if (result.document.logicalDate != logicalDate) {
+                        state = state.copy(loading = false, selectedDate = logicalDate, document = null, markdownBody = "", errorMessage = "指定されたデイリーノートは利用できません。", canRetryLoad = false)
+                        return@launch
+                    }
+                    dailySummaryCache[logicalDate] = AndroidDailyDocumentSummary(
+                        result.document.taskchuteDayId, logicalDate, result.document.documentId,
+                    )
+                    state = DailyUiState(
+                        loading = false,
+                        selectedDate = logicalDate,
+                        document = result.document,
+                        markdownBody = result.document.markdownBody,
+                        saveStatus = DailySaveStatus.SAVED,
+                    )
+                }
+                DailyResult.Missing -> state = DailyUiState(
+                    loading = false,
+                    selectedDate = logicalDate,
+                    errorMessage = "指定された日またはデイリーノートは利用できません。",
+                )
+                DailyResult.Unauthorized -> {
+                    state = state.copy(loading = false, selectedDate = logicalDate, errorMessage = "認証が必要です。", canRetryLoad = true)
+                    onUnauthorized()
+                }
+                is DailyResult.Failure -> state = DailyUiState(loading = false, selectedDate = logicalDate, errorMessage = result.message, canRetryLoad = true)
+                is DailyResult.Conflict -> state = DailyUiState(loading = false, selectedDate = logicalDate, errorMessage = result.message, saveStatus = DailySaveStatus.CONFLICT, canRetryLoad = true)
+                is DailyResult.Ambiguous -> state = DailyUiState(loading = false, selectedDate = logicalDate, errorMessage = result.message, saveStatus = DailySaveStatus.AMBIGUOUS, canRetryLoad = true)
+            }
+        }
+    }
+
+    suspend fun resolveExistingDate(logicalDate: String): DailyResult = withContext(Dispatchers.IO) {
+        repository.fetchDailyByDate(logicalDate)
+    }
+
+    fun openResolvedDate(document: AndroidDailyDocument) {
+        dailySurfaceLoaded = true
+        lastRequestedLogicalDate = document.logicalDate
+        loadGeneration += 1
+        if (state.dirty || state.saving || state.blocked) return
+        dailySummaryCache[document.logicalDate] = AndroidDailyDocumentSummary(
+            document.taskchuteDayId, document.logicalDate, document.documentId,
+        )
+        state = DailyUiState(
+            loading = false,
+            selectedDate = document.logicalDate,
+            document = document,
+            markdownBody = document.markdownBody,
+            saveStatus = DailySaveStatus.SAVED,
+        )
+    }
+
     fun retryLoad() {
         dailySurfaceLoaded = true
         sessionScope.launch { loadDate(lastRequestedLogicalDate) }

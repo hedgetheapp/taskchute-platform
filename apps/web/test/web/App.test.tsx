@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   loadDocuments: vi.fn(), loadDocument: vi.fn(), resolveDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
   ensureTaskPrimaryDocument: vi.fn(), loadTaskPrimaryDocumentById: vi.fn(), updateTaskPrimaryDocument: vi.fn(),
   loadProjectPrimaryDocument: vi.fn(), loadProjectPrimaryDocumentById: vi.fn(), ensureProjectPrimaryDocument: vi.fn(), updateProjectPrimaryDocument: vi.fn(),
+  loadDailyPrimaryDocuments: vi.fn(), loadDailyPrimaryDocument: vi.fn(), loadDailyPrimaryDocumentByDate: vi.fn(), ensureDailyPrimaryDocument: vi.fn(), updateDailyPrimaryDocument: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -296,6 +297,9 @@ beforeEach(() => {
     official_entry: null, override: { logical_date: "2026-08-22", override_kind: "holiday", reason: null, revision: 0, updated_at: "now" } } });
   mocks.deleteEffectiveDayOverride.mockResolvedValue({ classification: { logical_date: "2026-08-22", base: "workday", effective: "workday", official_entry: null, override: null } });
   mocks.loadDocuments.mockResolvedValue({ documents: [] });
+  mocks.loadDailyPrimaryDocuments.mockResolvedValue({ days: [{ taskchute_day_id: "day-26", logical_date: "2026-10-26", document_id: "daily-doc-26" }] });
+  mocks.loadDailyPrimaryDocument.mockResolvedValue({ document_id: "daily-doc-26", kind: "daily_primary", taskchute_day_id: "day-26", logical_date: "2026-10-26", markdown_body: "# Daily", revision: 1, created_at: "2026-10-26T00:00:00.000Z", updated_at: "2026-10-26T00:00:00.000Z" });
+  mocks.loadDailyPrimaryDocumentByDate.mockResolvedValue({ document_id: "daily-doc-26", kind: "daily_primary", taskchute_day_id: "day-26", logical_date: "2026-10-26", markdown_body: "# Daily", revision: 1, created_at: "2026-10-26T00:00:00.000Z", updated_at: "2026-10-26T00:00:00.000Z" });
 });
 
 async function openSectionSettings() {
@@ -424,6 +428,33 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("heading", { name: "Resolved task title" })).toBeTruthy();
     expect(window.location.search).toBe(`?view=note&document=${documentId}`);
     expect(window.location.search).not.toContain("task=");
+  });
+
+  it("opens the exact established Daily route through the read-only date resolver", async () => {
+    window.history.replaceState(null, "", "/?view=daily&date=2026-10-26");
+    mocks.loadDay.mockResolvedValue(emptyDay);
+
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "2026-10-26" });
+    expect(mocks.loadDailyPrimaryDocumentByDate).toHaveBeenCalledWith("2026-10-26");
+    expect(mocks.ensureDailyPrimaryDocument).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("?view=daily&date=2026-10-26");
+  });
+
+  it.each([
+    ["/?view=daily&date=2026-02-30", "invalid calendar date"],
+    ["/?view=daily&date=2026-10-26&unexpected=1", "unexpected query parameter"],
+    ["/?view=daily", "missing date"],
+  ])("rejects a %s Daily route without an API lookup", async (route) => {
+    window.history.replaceState(null, "", route);
+    mocks.loadDay.mockResolvedValue(emptyDay);
+
+    render(<App />);
+
+    await screen.findByText("指定されたデイリーノートは利用できません。");
+    expect(mocks.loadDailyPrimaryDocumentByDate).not.toHaveBeenCalled();
+    expect(mocks.ensureDailyPrimaryDocument).not.toHaveBeenCalled();
   });
 
   it("does not navigate or logout while an ambiguous Note save is unresolved", async () => {

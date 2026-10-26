@@ -31,6 +31,8 @@ export interface NotesBoardProps {
   onSavingChange?: (saving: boolean) => void;
   onRegisterFlush?: (flush: (() => Promise<boolean>) | null) => void;
   initialDocumentId?: string | null;
+  initialDailyDate?: string | null;
+  initialDailyRouteValid?: boolean;
   onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
   floatingProjectIds?: string[];
   authEpoch?: number;
@@ -274,7 +276,7 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   </form>;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [], authEpoch = 0, mutationsBlocked = false, realtimeRefresh }: NotesBoardProps) {
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, initialDailyDate, initialDailyRouteValid = true, onOpenProjectNote, floatingProjectIds = [], authEpoch = 0, mutationsBlocked = false, realtimeRefresh }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [projectDocuments, setProjectDocuments] = useState<ProjectPrimaryDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
@@ -288,7 +290,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [saving, setSaving] = useState(false);
   const [inFlightRequest, setInFlightRequest] = useState<MutationRequest | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project" | "daily">("all");
+  const [dailyRouteDate, setDailyRouteDate] = useState<string | null | undefined>(initialDailyDate);
+  const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project" | "daily">(initialDailyDate !== undefined ? "daily" : "all");
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
@@ -450,8 +453,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     } finally { if (loadToken === canonicalLoadTokenRef.current) setLoading(false); }
   }, [handleUnauthorized, setEditorFromCanonical]);
 
-    if ((noteKind as string) === "daily") return;
   useEffect(() => {
+    if ((noteKind as string) === "daily") return;
     let cancelled = false;
     const initialMode = modeRef.current;
     const initialSelectedId = selectedIdRef.current;
@@ -854,9 +857,15 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     onUnresolvedChange={onUnresolvedChange}
     onSavingChange={onSavingChange}
     onRegisterFlush={onRegisterFlush}
-    onExit={(kind) => setNoteKind(kind)}
+    onExit={(kind) => {
+      if (dailyRouteDate !== undefined) window.history.replaceState(null, "", window.location.pathname);
+      setDailyRouteDate(undefined);
+      setNoteKind(kind);
+    }}
     authEpoch={authEpoch}
     mutationsBlocked={mutationsBlocked}
+    initialDate={dailyRouteDate}
+    initialRouteValid={initialDailyRouteValid}
   />;
 
   async function copyDocumentLink(documentId: string): Promise<void> {

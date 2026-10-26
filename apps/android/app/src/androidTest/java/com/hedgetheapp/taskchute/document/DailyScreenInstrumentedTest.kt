@@ -79,6 +79,37 @@ class DailyScreenInstrumentedTest {
     }
 
     @Test
+    fun exactDateRouteUsesReadOnlyMaterializedDailyLookup() {
+        val repository = FakeRepository().apply {
+            dateDocument = AndroidDailyDocument("doc-28", "day-28", "2026-09-28", "Linked Daily body", 0)
+        }
+        val loadDayCalls = AtomicInteger()
+        controller = DailyController(
+            repository = repository,
+            loadDay = { loadDayCalls.incrementAndGet(); error("date route must not resolve or establish the current Day") },
+            onUnauthorized = {},
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                DailyScreen(
+                    controller = requireNotNull(controller),
+                    onNavigateToday = {},
+                    onNavigateNotes = {},
+                    onNavigateSettings = {},
+                    initialDate = "2026-09-28",
+                )
+            }
+        }
+
+        composeRule.waitUntil(10_000) { controller?.state?.document?.documentId == "doc-28" }
+        assertEquals("2026-09-28", controller?.state?.selectedDate)
+        assertEquals(1, repository.dateLookupCalls.get())
+        assertEquals(0, repository.ensureCalls.get())
+        assertEquals(0, loadDayCalls.get())
+        assertEquals("Linked Daily body", controller?.state?.markdownBody)
+    }
+
+    @Test
     fun dailyNavigationBarHidesOnlyForFocusedBodyWithVisibleIme() {
         assertTrue(shouldShowDailyNavigationBar(editorBodyFocused = false, imeVisible = true))
         assertTrue(shouldShowDailyNavigationBar(editorBodyFocused = true, imeVisible = false))
@@ -305,13 +336,24 @@ class DailyScreenInstrumentedTest {
 
     private class FakeRepository : DailyDocumentRepository {
         val updateCalls = AtomicInteger()
+        val dateLookupCalls = AtomicInteger()
+        val ensureCalls = AtomicInteger()
         var lastUpdateBody: String? = null
+        var dateDocument: AndroidDailyDocument? = null
 
         override fun listDaily() = DailyListResult.Success(listOf(AndroidDailyDocumentSummary("day-1", "2026-09-29", "doc-1")))
 
         override fun fetchDaily(documentId: String) = DailyResult.Success(AndroidDailyDocument(documentId, "day-1", "2026-09-29", "Daily body", 0))
 
-        override fun ensureDaily(request: DailyEnsureRequest) = error("unexpected ensure")
+        override fun ensureDaily(request: DailyEnsureRequest): DailyResult {
+            ensureCalls.incrementAndGet()
+            error("unexpected ensure")
+        }
+
+        override fun fetchDailyByDate(logicalDate: String): DailyResult {
+            dateLookupCalls.incrementAndGet()
+            return dateDocument?.takeIf { it.logicalDate == logicalDate }?.let(DailyResult::Success) ?: DailyResult.Missing
+        }
 
         override fun updateDaily(request: DailyUpdateRequest): DailyResult {
             updateCalls.incrementAndGet()

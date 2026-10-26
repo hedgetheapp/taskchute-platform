@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,8 +53,15 @@ import com.hedgetheapp.taskchute.ui.FullScreenLoadingPresentation
 import com.hedgetheapp.taskchute.ui.TaskChuteTheme
 import com.hedgetheapp.taskchute.ui.authScreenPresentation
 import com.hedgetheapp.taskchute.document.DailyController
+import com.hedgetheapp.taskchute.document.DailySaveStatus
+import com.hedgetheapp.taskchute.document.DailyResult
 import com.hedgetheapp.taskchute.document.DailyDocumentHttpRepository
 import com.hedgetheapp.taskchute.document.DailyScreen
+import com.hedgetheapp.taskchute.document.AndroidDailyDocument
+import com.hedgetheapp.taskchute.document.AndroidDocument
+import com.hedgetheapp.taskchute.document.AndroidInternalDocumentRoute
+import com.hedgetheapp.taskchute.document.DocumentResult
+import com.hedgetheapp.taskchute.document.NoteSaveStatus
 import com.hedgetheapp.taskchute.document.DocumentHttpRepository
 import com.hedgetheapp.taskchute.document.NotesController
 import com.hedgetheapp.taskchute.document.NotesScreen
@@ -68,6 +76,11 @@ import com.hedgetheapp.taskchute.review.ReviewScreen
 import com.hedgetheapp.taskchute.review.ReviewDailyMetricsController
 import com.hedgetheapp.taskchute.review.ReviewPeriodMetricsController
 import com.hedgetheapp.taskchute.review.ReviewPeriodMetricsHttpRepository
+
+private sealed interface InternalLinkSource {
+    data class Note(val documentId: String, val returnDestination: AndroidDestination) : InternalLinkSource
+    data class Daily(val logicalDate: String) : InternalLinkSource
+}
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -264,6 +277,151 @@ private fun TaskChuteApp(
     var password by remember { mutableStateOf("") }
     var signOutConfirmationVisible by remember { mutableStateOf(false) }
     var authenticatedSessionActive by remember { mutableStateOf(false) }
+    var internalLinkBackStack by remember { mutableStateOf<List<InternalLinkSource>>(emptyList()) }
+    var internalLinkInProgress by remember { mutableStateOf(false) }
+    var internalLinkError by remember { mutableStateOf<String?>(null) }
+    var dailyInitialDate by remember { mutableStateOf<String?>(null) }
+    val appScope = rememberCoroutineScope()
+
+    fun navigateNormally(next: AndroidDestination) {
+        internalLinkBackStack = emptyList()
+        internalLinkError = null
+        internalLinkInProgress = false
+        dailyInitialDate = null
+        destination = next
+    }
+
+    fun currentInternalLinkSource(): InternalLinkSource? = when (destination) {
+        AndroidDestination.DAILY -> dailyController.state.document?.logicalDate?.let { InternalLinkSource.Daily(it) }
+        AndroidDestination.NOTES, AndroidDestination.TODAY -> notesController.state.editor
+            ?.takeIf { destination == AndroidDestination.NOTES || it.origin == com.hedgetheapp.taskchute.document.NoteEditorOrigin.TODAY_TASK }
+            ?.document?.documentId?.let { InternalLinkSource.Note(it, destination) }
+        else -> null
+    }
+
+    fun closeInternalLinkFlowForSaveFailure() {
+        internalLinkInProgress = false
+        internalLinkError = "保存または競合を解決してからリンク先へ移動してください。"
+    }
+
+    fun navigateBackThroughInternalLinks() {
+        if (internalLinkInProgress) return
+        val source = internalLinkBackStack.lastOrNull() ?: return
+        internalLinkInProgress = true
+        internalLinkError = null
+        appScope.launch {
+            when (source) {
+                is InternalLinkSource.Note -> when (val result = notesController.resolveInternalLink(source.documentId)) {
+                    is DocumentResult.Success -> {
+                        notesController.openResolvedInternalLink(result.document)
+                        dailyInitialDate = null
+                        destination = source.returnDestination
+                        internalLinkBackStack = internalLinkBackStack.dropLast(1)
+                        internalLinkInProgress = false
+                    }
+                    DocumentResult.Missing -> { internalLinkError = "元のノートは利用できません。"; internalLinkInProgress = false }
+                    DocumentResult.Unauthorized -> { internalLinkError = "認証が必要です。"; internalLinkInProgress = false }
+                    is DocumentResult.Failure -> { internalLinkError = "元のノートを読み込めませんでした。"; internalLinkInProgress = false }
+                    is DocumentResult.Conflict, is DocumentResult.Ambiguous -> { internalLinkError = "元のノートを読み込めませんでした。"; internalLinkInProgress = false }
+                }
+                is InternalLinkSource.Daily -> when (val result = dailyController.resolveExistingDate(source.logicalDate)) {
+                    is DailyResult.Success -> {
+                        if (result.document.logicalDate != source.logicalDate) {
+                            internalLinkError = "元のデイリーノートは利用できません。"
+                        } else {
+                            dailyController.openResolvedDate(result.document)
+                            dailyInitialDate = source.logicalDate
+                            destination = AndroidDestination.DAILY
+                            internalLinkBackStack = internalLinkBackStack.dropLast(1)
+                        }
+                        internalLinkInProgress = false
+                    }
+                    DailyResult.Missing -> { internalLinkError = "元のデイリーノートは利用できません。"; internalLinkInProgress = false }
+                    DailyResult.Unauthorized -> { internalLinkError = "認証が必要です。"; internalLinkInProgress = false }
+                    is DailyResult.Failure, is DailyResult.Conflict, is DailyResult.Ambiguous -> { internalLinkError = "元のデイリーノートを読み込めませんでした。"; internalLinkInProgress = false }
+                }
+            }
+        }
+    }
+
+    fun openInternalLink(route: AndroidInternalDocumentRoute) {
+        if (internalLinkInProgress) return
+        val source = currentInternalLinkSource()
+        if (source == null) {
+            internalLinkError = "この画面からリンク先を開けません。"
+            return
+        }
+        if (route is AndroidInternalDocumentRoute.Note && source is InternalLinkSource.Note && route.documentId == source.documentId) return
+        val noteEditor = notesController.state.editor
+        val noteBlocked = notesController.state.lifecycleSaving || notesController.state.unresolvedLifecycleRequest != null ||
+            noteEditor?.blocked == true || noteEditor?.saveStatus in setOf(NoteSaveStatus.CONFLICT, NoteSaveStatus.AMBIGUOUS, NoteSaveStatus.ERROR)
+        val dailyBlocked = dailyController.state.blocked || dailyController.state.saveStatus in setOf(DailySaveStatus.CONFLICT, DailySaveStatus.AMBIGUOUS, DailySaveStatus.ERROR)
+        if ((source is InternalLinkSource.Note && noteBlocked) || (source is InternalLinkSource.Daily && dailyBlocked)) {
+            internalLinkError = "保存または競合を解決してからリンク先へ移動してください。"
+            return
+        }
+        if (route is AndroidInternalDocumentRoute.Note && source !is InternalLinkSource.Note && notesController.hasUnsavedChanges) {
+            internalLinkError = "Notesの未保存または未解決の変更を先に確認してください。"
+            return
+        }
+        if (route is AndroidInternalDocumentRoute.Daily && source !is InternalLinkSource.Daily && dailyController.hasUnsavedChanges) {
+            internalLinkError = "Dailyの未保存または未解決の変更を先に確認してください。"
+            return
+        }
+
+        internalLinkInProgress = true
+        internalLinkError = null
+        appScope.launch {
+            when (route) {
+                is AndroidInternalDocumentRoute.Note -> when (val result = notesController.resolveInternalLink(route.documentId)) {
+                    is DocumentResult.Success -> {
+                        if (result.document.documentId != route.documentId) {
+                            internalLinkError = "リンク先のノートは利用できません。"
+                            internalLinkInProgress = false
+                            return@launch
+                        }
+                        val afterFlush = {
+                            internalLinkBackStack = (internalLinkBackStack + source).takeLast(20)
+                            dailyInitialDate = null
+                            notesController.openResolvedInternalLink(result.document)
+                            destination = if (result.document.kind == com.hedgetheapp.taskchute.document.DocumentKind.TASK_PRIMARY) {
+                                AndroidDestination.TODAY
+                            } else {
+                                AndroidDestination.NOTES
+                            }
+                            internalLinkInProgress = false
+                        }
+                        if (source is InternalLinkSource.Daily) dailyController.flushAndNavigate(afterFlush)
+                        else notesController.flushAndNavigate(afterFlush)
+                    }
+                    DocumentResult.Missing -> { internalLinkError = "リンク先のノートは利用できません。"; internalLinkInProgress = false }
+                    DocumentResult.Unauthorized -> { internalLinkError = "認証が必要です。"; internalLinkInProgress = false }
+                    is DocumentResult.Failure, is DocumentResult.Conflict, is DocumentResult.Ambiguous -> { internalLinkError = "リンク先のノートを読み込めませんでした。"; internalLinkInProgress = false }
+                }
+                is AndroidInternalDocumentRoute.Daily -> when (val result = dailyController.resolveExistingDate(route.logicalDate)) {
+                    is DailyResult.Success -> {
+                        if (result.document.logicalDate != route.logicalDate) {
+                            internalLinkError = "リンク先のデイリーノートは利用できません。"
+                            internalLinkInProgress = false
+                            return@launch
+                        }
+                        val afterFlush = {
+                            internalLinkBackStack = (internalLinkBackStack + source).takeLast(20)
+                            dailyController.openResolvedDate(result.document)
+                            dailyInitialDate = result.document.logicalDate
+                            destination = AndroidDestination.DAILY
+                            internalLinkInProgress = false
+                        }
+                        if (source is InternalLinkSource.Daily) dailyController.flushAndNavigate(afterFlush)
+                        else notesController.flushAndNavigate(afterFlush)
+                    }
+                    DailyResult.Missing -> { internalLinkError = "リンク先のデイリーノートは利用できません。"; internalLinkInProgress = false }
+                    DailyResult.Unauthorized -> { internalLinkError = "認証が必要です。"; internalLinkInProgress = false }
+                    is DailyResult.Failure, is DailyResult.Conflict, is DailyResult.Ambiguous -> { internalLinkError = "リンク先のデイリーノートを読み込めませんでした。"; internalLinkInProgress = false }
+                }
+            }
+        }
+    }
 
     fun continueSignOut() {
         realtimeManager.stop()
@@ -301,9 +459,26 @@ private fun TaskChuteApp(
             realtimeManager.stop()
             if (state is AuthUiState.SignedOut) {
                 AndroidHomeWidgetIntents.requestRefresh(appContext)
-                destination = AndroidDestination.TODAY
+                navigateNormally(AndroidDestination.TODAY)
                 planningController.dismiss()
             }
+        }
+    }
+    LaunchedEffect(
+        internalLinkInProgress,
+        destination,
+        notesController.state.editor?.saveStatus,
+        dailyController.state.saveStatus,
+        notesController.state.lifecycleSaving,
+        notesController.state.unresolvedLifecycleRequest,
+    ) {
+        if (!internalLinkInProgress) return@LaunchedEffect
+        val noteEditor = notesController.state.editor
+        val noteFailed = notesController.state.lifecycleSaving.not() && notesController.state.unresolvedLifecycleRequest == null &&
+            noteEditor?.saveStatus in setOf(NoteSaveStatus.CONFLICT, NoteSaveStatus.AMBIGUOUS, NoteSaveStatus.ERROR)
+        val dailyFailed = dailyController.state.saveStatus in setOf(DailySaveStatus.CONFLICT, DailySaveStatus.AMBIGUOUS, DailySaveStatus.ERROR)
+        if ((destination == AndroidDestination.DAILY && dailyFailed) || (destination != AndroidDestination.DAILY && noteFailed)) {
+            closeInternalLinkFlowForSaveFailure()
         }
     }
 
@@ -332,44 +507,54 @@ private fun TaskChuteApp(
                         AndroidDestination.TODAY -> TodayScreen(
                             controller = todayController,
                             planningController = planningController,
-                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
-                            onNavigateNotes = { destination = AndroidDestination.NOTES },
-                            onNavigateDaily = { destination = AndroidDestination.DAILY },
-                            onNavigateReview = { destination = AndroidDestination.REVIEW },
+                            onNavigateSettings = { navigateNormally(AndroidDestination.SETTINGS) },
+                            onNavigateNotes = { navigateNormally(AndroidDestination.NOTES) },
+                            onNavigateDaily = { navigateNormally(AndroidDestination.DAILY) },
+                            onNavigateReview = { navigateNormally(AndroidDestination.REVIEW) },
                             directManipulationController = directManipulationController,
                             taskNoteController = notesController,
                             onOpenTaskNote = { task -> task.taskId?.let { notesController.openTaskPrimary(it, task.title, task.primaryDocumentId) } },
+                            onOpenInternalLink = ::openInternalLink,
+                            onSearchInternalLinks = notesController::searchInternalLinks,
+                            onNavigateInternalBack = if (internalLinkBackStack.isNotEmpty()) ::navigateBackThroughInternalLinks else null,
                             onSignOut = signOut,
                         )
                         AndroidDestination.SETTINGS -> SettingsScreen(
                             controller = settingsController,
-                            onNavigateToday = { destination = AndroidDestination.TODAY },
-                            onNavigateNotes = { destination = AndroidDestination.NOTES },
-                            onNavigateDaily = { destination = AndroidDestination.DAILY },
-                            onNavigateReview = { destination = AndroidDestination.REVIEW },
+                            onNavigateToday = { navigateNormally(AndroidDestination.TODAY) },
+                            onNavigateNotes = { navigateNormally(AndroidDestination.NOTES) },
+                            onNavigateDaily = { navigateNormally(AndroidDestination.DAILY) },
+                            onNavigateReview = { navigateNormally(AndroidDestination.REVIEW) },
                             onSignOut = signOut,
                         )
                         AndroidDestination.NOTES -> NotesScreen(
                             controller = notesController,
-                            onNavigateToday = { destination = AndroidDestination.TODAY },
-                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
-                            onNavigateDaily = { destination = AndroidDestination.DAILY },
-                            onNavigateReview = { destination = AndroidDestination.REVIEW },
+                            onNavigateToday = { navigateNormally(AndroidDestination.TODAY) },
+                            onNavigateSettings = { navigateNormally(AndroidDestination.SETTINGS) },
+                            onNavigateDaily = { navigateNormally(AndroidDestination.DAILY) },
+                            onNavigateReview = { navigateNormally(AndroidDestination.REVIEW) },
+                            onOpenInternalLink = ::openInternalLink,
+                            onSearchInternalLinks = notesController::searchInternalLinks,
+                            onNavigateInternalBack = if (internalLinkBackStack.isNotEmpty()) ::navigateBackThroughInternalLinks else null,
                         )
                         AndroidDestination.DAILY -> DailyScreen(
                             controller = dailyController,
-                            onNavigateToday = { destination = AndroidDestination.TODAY },
-                            onNavigateNotes = { destination = AndroidDestination.NOTES },
-                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
-                            onNavigateReview = { destination = AndroidDestination.REVIEW },
+                            onNavigateToday = { navigateNormally(AndroidDestination.TODAY) },
+                            onNavigateNotes = { navigateNormally(AndroidDestination.NOTES) },
+                            onNavigateSettings = { navigateNormally(AndroidDestination.SETTINGS) },
+                            onNavigateReview = { navigateNormally(AndroidDestination.REVIEW) },
+                            initialDate = dailyInitialDate,
+                            onOpenInternalLink = ::openInternalLink,
+                            onSearchInternalLinks = notesController::searchInternalLinks,
+                            onNavigateInternalBack = if (internalLinkBackStack.isNotEmpty()) ::navigateBackThroughInternalLinks else null,
                         )
                         AndroidDestination.REVIEW -> ReviewScreen(
                             dailyMetricsController = reviewDailyMetricsController,
                             periodMetricsController = reviewPeriodMetricsController,
-                            onNavigateToday = { destination = AndroidDestination.TODAY },
-                            onNavigateNotes = { destination = AndroidDestination.NOTES },
-                            onNavigateDaily = { destination = AndroidDestination.DAILY },
-                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onNavigateToday = { navigateNormally(AndroidDestination.TODAY) },
+                            onNavigateNotes = { navigateNormally(AndroidDestination.NOTES) },
+                            onNavigateDaily = { navigateNormally(AndroidDestination.DAILY) },
+                            onNavigateSettings = { navigateNormally(AndroidDestination.SETTINGS) },
                         )
                     }
                 }
@@ -382,6 +567,9 @@ private fun TaskChuteApp(
                     confirmButton = {
                         TextButton(onClick = {
                             signOutConfirmationVisible = false
+                            internalLinkBackStack = emptyList()
+                            dailyInitialDate = null
+                            internalLinkInProgress = false
                             notesController.resetForSessionChange()
                             dailyController.resetForSessionChange()
                             continueSignOut()
@@ -390,6 +578,14 @@ private fun TaskChuteApp(
                     dismissButton = {
                         TextButton(onClick = { signOutConfirmationVisible = false }) { Text("キャンセル") }
                     },
+                )
+            }
+            internalLinkError?.let { message ->
+                AlertDialog(
+                    onDismissRequest = { internalLinkError = null },
+                    title = { Text("ノートを開けません") },
+                    text = { Text(message) },
+                    confirmButton = { TextButton(onClick = { internalLinkError = null }) { Text("閉じる") } },
                 )
             }
                 if (state is AuthUiState.SignedIn) WearPairingConfirmationDialog(wearPairingController)

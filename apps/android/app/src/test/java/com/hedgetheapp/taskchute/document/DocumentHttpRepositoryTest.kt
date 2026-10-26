@@ -7,6 +7,41 @@ import org.junit.Test
 
 class DocumentHttpRepositoryTest {
     @Test
+    fun internalLinkSearchUsesBoundedReadOnlyRouteAndParsesArchiveLabelsAndCursor() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, """{"candidates":[{"document_id":"doc-1","kind":"project_primary","label":"Project","context":"プロジェクト","archived":true,"logical_date":null}],"next_cursor":"cursor-2"}""")
+        })
+
+        val result = repository.searchInternalLinks("日本語 query", "cursor-1") as InternalDocumentLinkSearchResult.Success
+
+        assertEquals("GET", requests.single().first)
+        assertTrue(requests.single().second.startsWith("/api/v1/documents/search?q="))
+        assertTrue(requests.single().second.contains("cursor=cursor-1"))
+        assertEquals(null, requests.single().third)
+        assertEquals(InternalDocumentLinkKind.PROJECT_PRIMARY, result.page.candidates.single().kind)
+        assertTrue(result.page.candidates.single().archived)
+        assertEquals("cursor-2", result.page.nextCursor)
+    }
+
+    @Test
+    fun permalinkResolutionIsReadOnlyAndUsesCurrentTaskTitleProjection() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, """{"document_id":"doc-1","kind":"task_primary","task_id":"task-1","task_title":"Current task title","markdown_body":"body","revision":3,"created_at":"2026-09-15T00:00:00Z","updated_at":"2026-09-16T00:00:00Z"}""")
+        })
+
+        val result = repository.resolvePermalink("doc-1") as DocumentResult.Success
+
+        assertEquals(Triple("GET", "/api/v1/documents/doc-1/resolve", null), requests.single())
+        assertEquals(DocumentKind.TASK_PRIMARY, result.document.kind)
+        assertEquals("task-1", result.document.taskId)
+        assertEquals("Current task title", result.document.title)
+    }
+
+    @Test
     fun listParsesCanonicalStandaloneSummaries() {
         val repository = repository { _, _, _ ->
             TodayHttpResponse(200, """{"documents":[{"document_id":"doc-1","title":"新しいノート","revision":2,"updated_at":"2026-09-15T00:00:00Z"}]}""")

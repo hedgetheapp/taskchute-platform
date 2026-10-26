@@ -1018,6 +1018,8 @@ export function App() {
   const taskNoteRequestRef = useRef(0);
   const [taskNoteOpenMode, setTaskNoteOpenMode] = useState<TaskNoteOpenMode>(readTaskNoteOpenMode);
   const [notesInitialDocumentId, setNotesInitialDocumentId] = useState<string | null>(null);
+  const [notesInitialDailyDate, setNotesInitialDailyDate] = useState<string | null | undefined>(undefined);
+  const [notesInitialDailyRouteValid, setNotesInitialDailyRouteValid] = useState(true);
   const taskNoteRouteHandledRef = useRef(false);
   const updateTaskNoteWindows = useCallback((updater: (current: TaskNoteWindowState[]) => TaskNoteWindowState[]) => {
     const next = updater(taskNoteWindowsRef.current);
@@ -2264,6 +2266,18 @@ export function App() {
     if (authState !== "signed-in" || taskNoteRouteHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const routeView = params.get("view");
+    if (routeView === "daily") {
+      const keys = [...params.keys()];
+      const dateValues = params.getAll("date");
+      const viewValues = params.getAll("view");
+      const validShape = window.location.pathname === "/" && keys.every((key) => key === "view" || key === "date") &&
+        viewValues.length === 1 && dateValues.length === 1;
+      taskNoteRouteHandledRef.current = true;
+      setNotesInitialDailyDate(dateValues.length === 1 ? dateValues[0] : null);
+      setNotesInitialDailyRouteValid(validShape);
+      setView("notes");
+      return;
+    }
     if (routeView === "note") {
       const documentId = params.get("document");
       taskNoteRouteHandledRef.current = true;
@@ -7154,6 +7168,8 @@ export function App() {
             onUnresolvedChange={setNotesUnresolved} authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
             realtimeRefresh={realtimeRefresh}
             initialDocumentId={notesInitialDocumentId}
+            initialDailyDate={notesInitialDailyDate}
+            initialDailyRouteValid={notesInitialDailyRouteValid}
             floatingProjectIds={taskNoteWindows.filter((windowState) => windowState.documentKind === "project_primary" && windowState.projectId).map((windowState) => windowState.projectId!) }
             onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title, true); }}
             onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />

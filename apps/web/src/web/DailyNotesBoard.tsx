@@ -21,13 +21,21 @@ interface DailyNotesBoardProps {
   onExit: (kind: "all" | "standalone" | "project") => void;
   mutationsBlocked?: boolean;
   authEpoch?: number;
+  initialDate?: string | null;
+  initialRouteValid?: boolean;
+}
+
+function isLogicalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function messageFor(caught: unknown): string {
   return caught instanceof Error ? caught.message : "デイリーノートの読み込みに失敗しました";
 }
 
-export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, onExit, mutationsBlocked = false, authEpoch = 0 }: DailyNotesBoardProps) {
+export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, onExit, mutationsBlocked = false, authEpoch = 0, initialDate, initialRouteValid = true }: DailyNotesBoardProps) {
   const [days, setDays] = useState<DailyPrimaryDocumentSummary[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [document, setDocument] = useState<DailyPrimaryDocument | null>(null);
@@ -90,11 +98,47 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
     } finally { setLoading(false); }
   }, [adopt, onUnauthorized]);
 
-  useEffect(() => { void loadDate(); }, [loadDate]);
+  const loadExistingDate = useCallback(async (logicalDate: string): Promise<boolean> => {
+    setLoading(true); setError(null); setNotice(null); setSelectedDate(logicalDate);
+    if (!isLogicalDate(logicalDate)) {
+      setError("指定されたデイリーノートは利用できません。"); setLoading(false); return false;
+    }
+    try {
+      const [loaded, projection] = await Promise.all([
+        api.loadDailyPrimaryDocumentByDate(logicalDate),
+        api.loadDailyPrimaryDocuments(),
+      ]);
+      if (loaded.logical_date !== logicalDate) throw new Error("指定されたデイリーノートは利用できません。");
+      setDays(projection.days);
+      setSelectedDate(logicalDate); adopt(loaded); setUnresolvedRequest(null); unresolvedRef.current = null;
+      return true;
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
+      else setError(caught instanceof ApiClientError && caught.status === 404
+        ? "指定された日またはデイリーノートは利用できません。" : messageFor(caught));
+      return false;
+    } finally { setLoading(false); }
+  }, [adopt, onUnauthorized]);
+
+  useEffect(() => {
+    if (initialDate !== undefined) {
+      if (!initialRouteValid || initialDate === null) {
+        setSelectedDate(initialDate); setError("指定されたデイリーノートは利用できません。"); setLoading(false);
+      } else {
+        void loadExistingDate(initialDate);
+      }
+    } else {
+      void loadDate();
+    }
+  }, [initialDate, initialRouteValid, loadDate, loadExistingDate]);
   useEffect(() => {
     if (authEpoch === 0 || dirty || saving || unresolved) return;
-    void loadDate(selectedDate ?? undefined);
-  }, [authEpoch, dirty, loadDate, saving, selectedDate, unresolved]);
+    if (initialDate !== undefined) {
+      if (selectedDate && initialRouteValid) void loadExistingDate(selectedDate);
+    } else {
+      void loadDate(selectedDate ?? undefined);
+    }
+  }, [authEpoch, dirty, initialDate, initialRouteValid, loadDate, loadExistingDate, saving, selectedDate, unresolved]);
 
   const send = useCallback(async (request: UpdateDailyPrimaryDocumentRequest): Promise<boolean> => {
     if (mutationsBlockedRef.current) return false;

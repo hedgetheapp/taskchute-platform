@@ -118,6 +118,21 @@ export async function loadDailyPrimaryDocument(db: D1Database, appUserId: string
   return projection(row);
 }
 
+/** Read an already-established Day's already-materialized Daily Note by its stable logical date. */
+export async function loadDailyPrimaryDocumentByDate(db: D1Database, appUserId: string, logicalDate: string): Promise<DailyPrimaryDocument> {
+  const row = await db.prepare(`SELECT d.document_id, d.app_user_id, relation.taskchute_day_id, day.logical_date,
+      d.kind, d.markdown_body, d.revision, d.created_at, d.updated_at
+    FROM taskchute_days day
+    JOIN daily_primary_documents relation
+      ON relation.app_user_id = day.app_user_id AND relation.taskchute_day_id = day.id
+    JOIN documents d
+      ON d.app_user_id = relation.app_user_id AND d.document_id = relation.document_id AND d.kind = 'daily_primary'
+    WHERE day.app_user_id = ? AND day.logical_date = ?
+    LIMIT 1`).bind(appUserId, logicalDate).first<DailyRow>();
+  if (!row) throw new HttpError(404, "resource_not_found", "Daily Note is unavailable");
+  return projection(row);
+}
+
 async function persistExistingEnsure(db: D1Database, appUserId: string, request: EnsureDailyPrimaryDocumentRequest,
   requestFingerprint: string, document: DailyPrimaryDocument, nowInstant: string): Promise<void> {
   const assertionId = `daily-primary-ensure:${request.operation_id}`;

@@ -49,6 +49,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -108,6 +109,31 @@ class NotesScreenInstrumentedTest {
 
         composeRule.waitUntil(5_000) { repository.updateCalls.get() == 1 && controller?.state?.editor?.dirty == false }
         assertEquals("manual flush", repository.lastUpdate?.markdownBody)
+    }
+
+    @Test
+    fun internalMarkdownTapDispatchesRecognizedRouteInsideApp() {
+        val documentId = "018f47a2-7b31-7abc-8def-1234567890ab"
+        val source = "[Target](/?view=note&document=$documentId)"
+        val openedRoute = java.util.concurrent.atomic.AtomicReference<AndroidInternalDocumentRoute?>(null)
+        composeRule.setContent {
+            MaterialTheme {
+                MarkdownLiveEditor(
+                    value = source,
+                    onValueChange = {},
+                    enabled = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onOpenInternalLink = { openedRoute.set(it) },
+                )
+            }
+        }
+
+        val linkAction = composeRule.onNodeWithContentDescription("Markdown body")
+            .fetchSemanticsNode().config[SemanticsActions.CustomActions]
+            .single { it.label == "リンクを開く: /?view=note&document=$documentId" }
+        composeRule.runOnIdle { assertTrue(linkAction.action()) }
+
+        assertEquals(AndroidInternalDocumentRoute.Note(documentId), openedRoute.get())
     }
 
     @Test

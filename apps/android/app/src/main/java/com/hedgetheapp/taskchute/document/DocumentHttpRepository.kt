@@ -61,6 +61,46 @@ class DocumentHttpRepository(
 
     override fun fetchStandalone(documentId: String): DocumentResult = fetch("/api/v1/documents/${JsonEncoding.pathSegment(documentId)}", DocumentKind.STANDALONE)
 
+    override fun resolvePermalink(documentId: String): DocumentResult = fetch(
+        "/api/v1/documents/${JsonEncoding.pathSegment(documentId)}/resolve",
+        expectedKind = null,
+    )
+
+    override fun searchInternalLinks(query: String, cursor: String?): InternalDocumentLinkSearchResult {
+        val path = buildString {
+            append("/api/v1/documents/search?q=").append(java.net.URLEncoder.encode(query, Charsets.UTF_8.name()))
+            if (cursor != null) append("&cursor=").append(java.net.URLEncoder.encode(cursor, Charsets.UTF_8.name()))
+        }
+        return when (val response = execute("GET", path, null)) {
+            is HttpResult.Success -> runCatching {
+                val root = response.body.objectValue()
+                val candidates = root.arrayField("candidates").map { value ->
+                    val item = value.objectValue()
+                    val kind = when (item.stringField("kind")) {
+                        "standalone" -> InternalDocumentLinkKind.STANDALONE
+                        "task_primary" -> InternalDocumentLinkKind.TASK_PRIMARY
+                        "project_primary" -> InternalDocumentLinkKind.PROJECT_PRIMARY
+                        "daily_primary" -> InternalDocumentLinkKind.DAILY_PRIMARY
+                        else -> error("Unknown internal document candidate kind")
+                    }
+                    InternalDocumentLinkCandidate(
+                        documentId = item.stringField("document_id"),
+                        kind = kind,
+                        label = item.stringField("label"),
+                        context = item.nullableStringField("context"),
+                        archived = item.booleanField("archived"),
+                        logicalDate = item.nullableStringField("logical_date"),
+                    )
+                }
+                if (candidates.size > 20) error("Internal document search page exceeds its bound")
+                val nextCursor = root.nullableStringField("next_cursor")
+                InternalDocumentLinkSearchResult.Success(InternalDocumentLinkSearchPage(candidates, nextCursor))
+            }.getOrElse { InternalDocumentLinkSearchResult.Failure("候補一覧を読み取れませんでした。再試行してください。") }
+            HttpResult.Unauthorized -> InternalDocumentLinkSearchResult.Unauthorized
+            is HttpResult.Failure -> InternalDocumentLinkSearchResult.Failure(response.message)
+        }
+    }
+
     override fun createStandalone(request: StandaloneCreateRequest): DocumentResult = mutation(
         "POST",
         "/api/v1/documents",
@@ -111,8 +151,8 @@ class DocumentHttpRepository(
         """{"operation_id":"${JsonEncoding.escape(request.operationId)}","project_id":"${JsonEncoding.escape(request.projectId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision},"markdown_body":"${JsonEncoding.escape(request.markdownBody)}"}""",
     )
 
-    private fun fetch(path: String, kind: DocumentKind): DocumentResult = when (val response = execute("GET", path, null)) {
-        is HttpResult.Success -> runCatching { DocumentResult.Success(parseDocument(response.body.objectValue(), kind)) }
+    private fun fetch(path: String, expectedKind: DocumentKind? = null): DocumentResult = when (val response = execute("GET", path, null)) {
+        is HttpResult.Success -> runCatching { DocumentResult.Success(parseDocument(response.body.objectValue(), expectedKind)) }
             .getOrElse { DocumentResult.Failure("ノートを読み取れませんでした。再試行してください。") }
         HttpResult.Unauthorized -> DocumentResult.Unauthorized
         is HttpResult.Failure -> if (response.notFound) DocumentResult.Missing else DocumentResult.Failure(response.message)
@@ -189,7 +229,7 @@ class DocumentHttpRepository(
             title = when (kind) {
                 DocumentKind.STANDALONE -> value.stringField("title")
                 DocumentKind.PROJECT_PRIMARY -> value.stringField("project_title")
-                DocumentKind.TASK_PRIMARY -> value.nullableStringField("title") ?: ""
+                DocumentKind.TASK_PRIMARY -> value.nullableStringField("task_title") ?: value.nullableStringField("title") ?: ""
             },
             markdownBody = value.stringField("markdown_body"),
             revision = value.intField("revision"),

@@ -15,6 +15,28 @@ import org.junit.Test
 
 class DailyControllerTest {
     @Test
+    fun internalDailyRouteLoadsMaterializedDateWithoutDayResolutionOrEnsure() {
+        val repository = FakeRepository().apply {
+            dateFetchResult = DailyResult.Success(document("doc-target", "day-target", "2026-09-23", "target"))
+        }
+        var dayReads = 0
+        val controller = controller(repository, loadDay = { logicalDate ->
+            dayReads += 1
+            TodayResult.Success(day(logicalDate ?: "2026-09-29", "day-default"))
+        })
+
+        controller.loadExistingDate("2026-09-23")
+
+        assertTrue(await { controller.state.document?.documentId == "doc-target" })
+        assertEquals("2026-09-23", controller.state.selectedDate)
+        assertEquals(1, repository.dateFetchCalls.get())
+        assertEquals(0, dayReads)
+        assertEquals(0, repository.listCalls.get())
+        assertEquals(0, repository.ensureCalls.get())
+        controller.close()
+    }
+
+    @Test
     fun initialDayAndSummaryReadsStartInParallel() {
         val repository = FakeRepository()
         val dayStarted = CountDownLatch(1)
@@ -571,9 +593,11 @@ class DailyControllerTest {
         var fetchProvider: ((String, Int) -> DailyResult)? = null
         var fetchResult: DailyResult? = null
         var fetchResults: ArrayDeque<DailyResult>? = null
+        var dateFetchResult: DailyResult = DailyResult.Missing
         val listCalls = AtomicInteger()
         val ensureCalls = AtomicInteger()
         val fetchCalls = AtomicInteger()
+        val dateFetchCalls = AtomicInteger()
         val fetchIds = mutableListOf<String>()
 
         override fun listDaily(): DailyListResult {
@@ -588,6 +612,11 @@ class DailyControllerTest {
                 ?: fetchResult
                 ?: fetchResults?.removeFirstOrNull()
                 ?: DailyResult.Success(document(documentId, "day-a", "2026-09-29", "body"))
+        }
+
+        override fun fetchDailyByDate(logicalDate: String): DailyResult {
+            dateFetchCalls.incrementAndGet()
+            return dateFetchResult
         }
 
         override fun ensureDaily(request: DailyEnsureRequest): DailyResult {

@@ -126,6 +126,22 @@ export interface DailyPrimaryDocumentListProjection {
   days: DailyPrimaryDocumentSummary[];
 }
 
+export type InternalDocumentLinkKind = "standalone" | "task_primary" | "project_primary" | "daily_primary";
+
+export interface InternalDocumentLinkCandidate {
+  document_id: string;
+  kind: InternalDocumentLinkKind;
+  label: string;
+  context: string | null;
+  archived: boolean;
+  logical_date: string | null;
+}
+
+export interface InternalDocumentLinkSearchProjection {
+  candidates: InternalDocumentLinkCandidate[];
+  next_cursor: string | null;
+}
+
 export interface EnsureDailyPrimaryDocumentRequest {
   operation_id: string;
   taskchute_day_id: string;
