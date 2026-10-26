@@ -28,3 +28,7 @@ TaskChuteDayごとのDaily Noteを、既にestablishされたDayに対して提�
 ## Boundaries
 
 Worker/APIの新規Daily document endpointsとAPP migration `0034_daily_primary_documents.sql`を追加するが、Daily Note専用のoffline authority、schema以外の既存Document semantics、production、Releaseは追加しない。Galaxy S23はProduct Owner manual smokeまで未確認、Productionは`NOT_RUN`、Releasedは`NO`とする。
+
+## Later clarification — D-186
+
+D-137's established-Day / Daily Document identity and ordinary navigation semantics remain unchanged. D-186 later adds standard Markdown Daily links by logical date and a Web direct date route that only reads an already-established Day with an already-materialized Daily Document. Resolving this permalink does not Ensure either record; missing/unestablished targets remain unavailable.

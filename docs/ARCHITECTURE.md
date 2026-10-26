@@ -740,6 +740,16 @@ Project Primaryはshared `documents` rowとowner-scoped `project_primary_documen
 
 Project Board、Notes、TodayのProject cellは同じWeb window registryと`TaskNoteEditor`を再利用し、Document resolverはProject relationとcurrent Project titleをowner scopeで直接照合する。Project deleteの既存command guardはlinked Project Primary Document identityを短命 assertionとして保持し、relationとDocumentだけをguarded batchで削除する。APP `0032`は既存Document/Task Primary/operation dataを再構築時にもfield-for-fieldで保持し、AUTH DB、runtime holiday/routine/calendar semantics、Task/Entry/Execution historyには依存しない。
 
+## D-186 Cross-Note internal link query / route boundary
+
+`GET /api/v1/documents/search?q=...&cursor=...` はauthenticated principalの`appUserId`だけを渡すread-only queryである。Queryは80文字以内へtrimし、cursorはversion/query/phase/keyset positionへ結びつける。各pageは既存`documents_owner_updated_idx`で最大101のDocument metadata rowをkeyset scanし、最大20候補を返す。順序は`updated_at DESC, document_id DESC`であり、active phaseを読み終えた後にarchived phaseへ移る。Task / Project relation、Task / Project row、Project archive / board metadata、Daily relation / established Dayをすべて同一owner条件でjoinする。responseにDocument bodyを含めない。Task/Project Primaryはpersisted relationの存在が前提、Dailyは既存materialized relationとDayの存在が前提であり、queryはEnsure/mutationを呼ばない。
+
+`GET /api/v1/daily-primary-documents/by-date?logical_date=...` はcanonical `YYYY-MM-DD`だけを受け付け、認証済みownerのestablished Dayから既存`daily_primary_documents` relationと`daily_primary` Documentをresolveするread-only pathである。通常Daily open/Ensure routeとは分離する。Web `/?view=daily&date=...` routeはこのqueryを用い、missing Day/Documentを明示的なunavailable stateへ写す。既存Note routeはstable Document IDを使う。
+
+Android editor interactionは`[[query`候補をread-only search endpointへdebounce付きで送る。IME composition中、dismissed、stale query、または選択位置不一致の応答は破棄する。保存されるMarkdownはstable ID/date routeである。Link openはstrict relative-route parserを通し、exact owner-scoped resolverまたはDaily date queryを使う。Source editorは既存flush barrier後にだけ遷移し、per-session memory back stackは20件で上限を持つ。Caretは既存D-172のDocument identity preferenceを使う。新しいschema/index、background state、writerは追加しない。
+
+Local SQLite EXPLAIN QUERY PLANは既存`documents_owner_updated_idx`を使用することを確認し、新規migrationは不要だった。Cloudflare Worker/D1 integration testの実行状態は`docs/TEST_MATRIX.md`に証拠・制限とともに記録する。
+
 ## D-156 lifecycle correction authority
 
 D-156 keeps Entry lifecycle and Execution facts server-canonical. Android Task Editor only expresses the user's correction intent; optimistic Day state is presentation-only and must reconcile to the canonical result.

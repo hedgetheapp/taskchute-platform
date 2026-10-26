@@ -1,3 +1,11 @@
+## D-186 — Cross-Note Internal Markdown Links v0.1
+
+Status: **Approved / implemented and integrated at `ae052751df8ff504e32f5072381a605dfe127f3f` / exact-SHA CI [run `40284877373`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40284877373) PASS / signed Phone artifact `12633393446` / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
+
+Canonical Decision: `docs/decisions/D-186_INTERNAL_MARKDOWN_LINKS_V01.md`.
+
+All-to-all links among existing Standalone, Task Primary, Project Primary, and materialized Daily Notes persist as ordinary Markdown using stable Document ID routes or Daily logical-date routes. Android `[[query` is transient picker interaction only. Search is owner-scoped, read-only, metadata-only, capped at 20 candidates per page with bounded cursor pagination; active results precede explicitly labeled archived Standalone/Project results. Web Daily permalinks resolve exact existing owner Day/Document without Ensure. Android uses an exact internal route allow-list, safe source flush, and bounded per-session back navigation. No schema/index migration, Wiki-link parsing, backlink/index/graph, body search, production operation, or release is approved. Product verification and Released remain NO.
+
 ## D-185 — Android Markdown editor corrective v0.3
 
 Status: **Approved / implemented at `e9b012f5ffa9e2bd3b095932e39dd12211ada19e` / exact-SHA CI PASS / Product Verified NO / Released NO** (Product Owner, 2026-10-26).

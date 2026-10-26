@@ -103,6 +103,14 @@ Ordered listの有効なitem末尾でsoftware keyboardの単一Enterを入力す
 
 **Underline (D-184 historical feature, superseded by D-185):** D-184 toolbar command and exact `<u>…</u>` Android preview recognition are removed. Existing Note source bytes are not migrated or rewritten; old `<u>` tokens display literally. Markdown link underline decoration remains. Web stays source-only, and no alternative underline syntax or generic HTML renderer is introduced.
 
+## D-186 Cross-Note internal Markdown link picker
+
+Android's shared Markdown body opens a compact candidate dialog after the user enters `[[` and a title/date query. The trigger is transient interaction; dismiss/cancel leaves source untouched. A candidate displays its authoritative title/date, type, meaningful disambiguating context, and an explicit `アーカイブ済み` marker where applicable. Active candidates precede archived Standalone / Project candidates; paging uses `さらに候補を表示`. Selection inserts an ordinary Markdown label and exact stable Note-ID or Daily-date route. Stale results, active IME composition, and changed caret/query do not insert.
+
+Recognized internal links are activated within Android. Navigation keeps a bounded per-session source trail and restores the exact source Document/Daily date and its D-172 caret on return. Save/conflict/ambiguous barriers remain visible and prevent unsafe transition. A missing or inaccessible target displays an unavailable message; there is no title fallback. External HTTP(S) links retain their existing handling. Web provides an exact Daily-date route inside the signed-in Notes surface and shows an unavailable state if the established Day or materialized Daily Note does not exist; route resolution makes no Daily/Day creation call.
+
+Backlinks, graph, persisted Wiki syntax, Web `[[` authoring UI, Note body search, source label rewrites, and broader archive interactions are not part of this design.
+
 ## D-134 Android Running Progress Player
 
 current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。

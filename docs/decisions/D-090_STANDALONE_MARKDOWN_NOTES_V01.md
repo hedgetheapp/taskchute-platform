@@ -197,3 +197,7 @@ Authenticated browser verification should be performed when an authenticated ses
 - D-008 object storage proposalは未変更。
 
 D-090はTask / Project / Routine Note semanticsを新たに決定しない。
+
+## Later clarification — D-186
+
+D-090's original exclusion of cross-document links/search remains accurate for its implementation scope. D-186 later approves standard Markdown links by stable Document ID or Daily logical date, plus bounded owner-scoped metadata candidate search across existing materialized Standalone, Task Primary, Project Primary, and Daily Notes. This does not add persisted Wiki syntax, backlinks, link indexing/graph, or body search, and does not change D-090's standalone identity, lifecycle, autosave, or authorization boundaries.

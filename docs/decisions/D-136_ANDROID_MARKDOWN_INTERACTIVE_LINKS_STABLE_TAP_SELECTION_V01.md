@@ -42,3 +42,7 @@ place its caret; non-interactive text gestures continue to the text field.
   metadata fetching, and WebView remain out of scope.
 - Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL` until physical-device
   verification. Production remains `NOT_RUN`; Released remains `NO`.
+
+## Later clarification — D-186
+
+D-136's external HTTP(S) linkification, stable selection, and accessibility behavior remain unchanged. D-186 later adds strict allow-listed internal Note and Daily route activation plus a bounded candidate picker. Its read-only Worker search and Web Daily route are separate D-186 scope; they do not change D-136's original implementation boundary or authorize Wiki schemes, backlinks, or body search.

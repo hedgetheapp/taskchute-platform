@@ -410,7 +410,7 @@ D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを�
 - lazy creationのexact lifecycle
 - Document deletion / restore semantics（standalone NoteはD-092でarchive / restore / confirmation-gated hard deleteを解決済み。Task / Project / RoutineOccurrence Documentは未決）
 - Markdown editor library
-- wiki-link compatibility scope
+- Wiki-link import/export compatibility (D-186の`[[query`はAndroid候補pickerの一時操作であり、保存syntaxではない)
 - backlink / link-index model
 - general noteのinitial scope
 - additional document types
@@ -420,7 +420,7 @@ D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを�
 - Routine day-specific Note templateのcopy / reference / override semanticsのphysical implementation
 - Entry / Execution単位の専用Documentを将来持つか
 
-D-101により、Task Primary Documentについてはstable UUIDv7 `document_id`、owner-scoped relation、lazy Ensure lifecycle、Markdown source、revision/CAS、Task title authority、shared owner-scoped Document permalinkとkind-resolving readが解決済みとなった。D-103により、Project Primaryについてもstable UUIDv7 `document_id`、owner-scoped relation、Project title authority、lazy Ensure、Markdown source、revision/CAS、Project Board/Notes/Today route、archive retention、Project hard delete時のrelation/document atomic cleanupが解決済みとなった。RoutineOccurrence Document、additional document types、preview/search/backlink/attachment semantics、revision-history UX、Task/Project以外のDocument lifecycleは引き続き未決または別Decisionのscopeである。
+D-101によりTask Primary、D-103によりProject PrimaryのDocument identity、owner-scoped relation、lifecycle、title authority、revision/CAS、permalink resolutionが解決済みとなった。D-186により4種の既存materialized Note間の標準Markdownリンク、bounded owner-scoped metadata candidate search、active/archive presentation、Web Daily exact-date read route、Androidのallow-listed route navigation / safe back behaviorも解決済みとなった。RoutineOccurrence Document、追加Document type、Wiki import/export compatibility、backlink/link index/graph、body search、attachment、revision-history UX、Task/Project以外のDocument lifecycleは引き続き未決または別Decisionのscopeである。
 
 ## Place / Location / Map
 

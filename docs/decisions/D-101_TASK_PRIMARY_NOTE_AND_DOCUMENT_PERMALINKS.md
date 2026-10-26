@@ -48,3 +48,7 @@ Standalone and Task Primary routes resolve the exact owner-scoped Document,
 including archived standalone Notes, and both editors copy the shared
 Document URL. This corrective changes no migration, dependency, or mutation
 command contract.
+
+## Later clarification — D-186
+
+D-101's original statement that Task Primary Notes had no search/link authoring was scoped to D-101 and remains the history of that decision. D-186 later allows a persisted standard Markdown link to an already-materialized Task Primary Document and exposes its authoritative current Task title in bounded, owner-scoped candidate search. Search does not Ensure a relation/Document or return body text. D-186 does not add backlinks, Wiki-link syntax, body search, or Task Note lifecycle changes.

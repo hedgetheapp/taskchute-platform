@@ -1046,6 +1046,18 @@ Projectはowner-scoped shared `Document`を0または1つの`project_primary` re
 
 Project PrimaryはNotes一覧の`プロジェクトノート` filter、Project Board、TodayのProject cellから共通`/?view=note&document=<document-id>` resolverで開く。list projectionはbodyを含めず、resolverはrelationと現在のProject titleをowner scopeで再解決し、missing/cross-owner identityへ別Note fallbackをしない。Notes一覧でのProject Note選択はNotes editor内のbody-only inline editor、Today / Project Board / direct routeはshared floating editorを使用し、同一Projectのfloating windowが既にあればそれをactivate / restoreしてinline editorを二重にmountしない。Project Primaryはtabごとに最大1つのeditable writerを持つ。Project archiveはrelation/Documentを保持し、Project hard deleteは既存dirty/in-flight/unresolved barrierの後、Project・relation・linked Project Primary Documentを一つのatomic outcomeとして削除し、Task/Entry/Execution/historyを変更しない。APP `0032_project_primary_documents.sql`は既存Document/Task Primary/operationsを保持してこのkind・relation・guardを追加し、AUTH migration・新規dependency・Task/Project-specific parallel Document storageは追加しない。
 
+## D-186 Cross-Note Internal Markdown Links v0.1
+
+Standalone / Task Primary / Project Primary / Daily Noteから4種いずれかの既存materialized Noteへリンクできる。保存形式は通常のMarkdownで、Note宛先は`/?view=note&document=<document-id>`、Daily宛先は`/?view=daily&date=YYYY-MM-DD`。Android `[[query`は候補pickerを開く一時的なeditor interactionであり、Wiki syntaxとして保存しない。dismissal、IME composition、stale input、候補未選択時はsourceを変更しない。表示labelは挿入時点のsnapshotだがNote identityはDocument ID、Daily identityはlogical dateであり、rename後もID/dateで解決する。title fallbackは禁止する。
+
+候補検索は認証済みowner scopeのread-only queryである。最大20件/page、Document metadata scanは101行以内、cursor paginationと安定した`updated_at DESC, document_id DESC`順を使う。bodyを返さず、Task/Project Primary relationやDay/Daily DocumentをEnsureしない。候補は既存relation / materialized Dailyだけを含める。Activeを先に返し、archived Standalone / Projectを後続phaseで`アーカイブ済み`として表示する。無効・missing・削除済み・cross-owner targetは利用不可とし、別Noteへfallbackしない。
+
+Web Daily direct routeは認証されたownerのexact established Dayとexisting materialized Daily Documentだけをreadし、route GETでDayやDocumentを作成しない。無効日・Dayなし・Daily Documentなしは利用不可を表示する。通常のDaily open flowが既存のEnsureを持つ場合はそのまま維持する。
+
+Androidはexact internal route allow-listに一致するNote/Daily linkだけをapp内で開く。他のdestinationは既存HTTP(S) link handlerへ渡し、unsupported/malformed routeをinternal扱いしない。source Note/Dailyは既存safe flush後に移動し、conflict / ambiguous / unresolved / failed saveでは移動を止める。bounded session back stackは元DocumentまたはDaily dateへ戻り、既存identity-based caret restoreを維持する。link閲覧自体ではbodyを更新せず、同じDocumentのduplicate writerを開かない。
+
+Wiki-link parsing/persistence、backlink/index/graph、full-text body search、automatic label rename、unmaterialized Note/Day creation、schema/index migration、dependency/service、offline index、production/releaseは含まない。詳細Decisionと実装境界は`docs/decisions/D-186_INTERNAL_MARKDOWN_LINKS_V01.md`。
+
 ## D-156 Android Today lifecycle rollback / reopen
 
 For a current established Day, Android Task Editor may perform two reverse lifecycle corrections.

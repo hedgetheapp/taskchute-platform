@@ -25,3 +25,7 @@ Task rowのProject cell、Settings > Project Boardのactive / archived Project r
 APP `0032_project_primary_documents.sql`は`documents.kind`へ`project_primary`を追加し、owner-scoped Project/Document relationと必要なoperation allow-listを追加する。既存standalone / task_primary Document、relation、operation、Project/Task/Entry/Execution/historyは保持し、AUTH migration、dependency、production operation、future document typesは追加しない。
 
 Canonical implementation and verification evidence is recorded in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`. Released remains **NO** and production remains **NOT_RUN**.
+
+## Later clarification — D-186
+
+D-103's original exclusion of Project Note search and backlinks remains the historical scope of that implementation. D-186 later includes only an existing materialized Project Primary Document in owner-scoped standard Markdown link candidate search, using the current Project title and an explicit archived label when that Project is archived. This lookup never Ensures/restores a Document or changes D-103's archive, hard-delete, or writer boundaries. Wiki syntax, backlinks, link index/graph, and body search remain out of scope.
