@@ -93,11 +93,97 @@ class MarkdownLiveEditorTest {
 
     @Test
     fun headingAndBulletOperateOnAllSelectedLines() {
-        val heading = MarkdownEditCommands.heading("一\n二", MarkdownSelection(0, 3))
+        val heading = MarkdownEditCommands.headingLevel("一\n二", MarkdownSelection(0, 3), level = 1)
         assertEquals("# 一\n# 二", heading.text)
 
         val bullet = MarkdownEditCommands.bullet(heading.text, MarkdownSelection(0, heading.text.length))
         assertEquals("- # 一\n- # 二", bullet.text)
+    }
+
+    @Test
+    fun headingPickerCreatesEachOfferedPrefixAndPlacesCaretAfterItOnBlankLine() {
+        MarkdownHeadingLevel.values().forEach { level ->
+            val prefix = "#".repeat(level.level) + " "
+            val blank = MarkdownEditCommands.headingLevel("", MarkdownSelection(0, 0), level.level)
+            val plain = MarkdownEditCommands.headingLevel("Title", MarkdownSelection(0, 0), level.level)
+
+            assertEquals(level.accessibilityLabel, prefix, blank.text)
+            assertEquals(level.accessibilityLabel, prefix.length, blank.selection.start)
+            assertEquals(level.accessibilityLabel, prefix.length, blank.selection.end)
+            assertEquals(level.accessibilityLabel, prefix + "Title", plain.text)
+            assertEquals(level.accessibilityLabel, prefix.length, plain.selection.start)
+        }
+    }
+
+    @Test
+    fun headingPickerChangesH1ThroughH6PrefixAndPreservesMultilineSelectionAndSurroundingText() {
+        MarkdownHeadingLevel.values().forEach { level ->
+            assertEquals(
+                "#".repeat(level.level) + " Title",
+                MarkdownEditCommands.headingLevel("###### Title", MarkdownSelection(0, 0), level.level).text,
+            )
+        }
+
+        val source = "before\n#\tFirst\n###### Second\nafter"
+        val selectionStart = source.indexOf("#\tFirst")
+        val selectionEnd = source.indexOf("Second") + "Second".length
+        val result = MarkdownEditCommands.headingLevel(source, MarkdownSelection(selectionStart, selectionEnd), level = 3)
+
+        assertEquals("before\n###\tFirst\n### Second\nafter", result.text)
+        assertEquals(selectionStart, result.selection.start)
+        assertEquals(selectionEnd - 1, result.selection.end)
+    }
+
+    @Test
+    fun headingPickerMapsCaretInsideExistingPrefixAndPreservesComposition() {
+        val source = "#\tTitle"
+        val insidePrefix = MarkdownEditCommands.headingLevel(source, MarkdownSelection(1, 1), level = 3)
+        assertEquals("###\tTitle", insidePrefix.text)
+        assertEquals(MarkdownSelection(3, 3), insidePrefix.selection)
+
+        val composing = TextFieldValue("# title", selection = TextRange(1), composition = TextRange(2, 7))
+        val result = applyMarkdownToolbarAction(composing, MarkdownToolbarActionId.HEADING_3, previousEdit = null)
+
+        assertEquals("### title", result.value.text)
+        assertEquals(TextRange(3), result.value.selection)
+        assertEquals(TextRange(4, 9), result.value.composition)
+        assertNull(result.reversibleEdit)
+    }
+
+    @Test
+    fun headingLevelActionIdentityAllowsSameLevelRevertButDifferentLevelReplacesIt() {
+        val original = TextFieldValue("# タイトル", selection = TextRange(2))
+        val h2 = applyMarkdownToolbarAction(original, MarkdownToolbarActionId.HEADING_2, previousEdit = null)
+        assertEquals("## タイトル", h2.value.text)
+
+        val sameLevel = applyMarkdownToolbarAction(h2.value, MarkdownToolbarActionId.HEADING_2, h2.reversibleEdit)
+        assertTrue(sameLevel.reverted)
+        assertEquals(original, sameLevel.value)
+
+        val h3 = applyMarkdownToolbarAction(h2.value, MarkdownToolbarActionId.HEADING_3, h2.reversibleEdit)
+        assertFalse(h3.reverted)
+        assertEquals("### タイトル", h3.value.text)
+        assertNotEquals(original, h3.value)
+    }
+
+    @Test
+    fun headingPickerSnapshotRejectsChangedSourceSelectionOrSessionButAllowsCompositionUpdate() {
+        val original = TextFieldValue("Title", selection = TextRange(2))
+        val snapshot = MarkdownHeadingPickerSnapshot("note-1", "Title", original)
+
+        assertTrue(isMarkdownHeadingPickerSnapshotCurrent(snapshot, "note-1", "Title", original))
+        assertTrue(
+            isMarkdownHeadingPickerSnapshotCurrent(
+                snapshot,
+                "note-1",
+                "Title",
+                original.copy(composition = TextRange(1, 3)),
+            ),
+        )
+        assertFalse(isMarkdownHeadingPickerSnapshotCurrent(snapshot, "note-2", "Title", original))
+        assertFalse(isMarkdownHeadingPickerSnapshotCurrent(snapshot, "note-1", "Updated", original))
+        assertFalse(isMarkdownHeadingPickerSnapshotCurrent(snapshot, "note-1", "Title", original.copy(text = "Typed")))
+        assertFalse(isMarkdownHeadingPickerSnapshotCurrent(snapshot, "note-1", "Title", original.copy(selection = TextRange(3))))
     }
 
     @Test
@@ -189,7 +275,7 @@ class MarkdownLiveEditorTest {
     fun anotherToolbarActionReplacesThePriorUndoAndCompositionIsNotCaptured() {
         val original = TextFieldValue("")
         val first = applyMarkdownToolbarAction(original, MarkdownToolbarActionId.BOLD, null)
-        val second = applyMarkdownToolbarAction(first.value, MarkdownToolbarActionId.HEADING, first.reversibleEdit)
+        val second = applyMarkdownToolbarAction(first.value, MarkdownToolbarActionId.HEADING_1, first.reversibleEdit)
         val third = applyMarkdownToolbarAction(second.value, MarkdownToolbarActionId.BOLD, second.reversibleEdit)
 
         assertFalse(third.reverted)

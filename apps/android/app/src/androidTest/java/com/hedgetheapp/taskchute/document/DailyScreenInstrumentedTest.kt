@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.document
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
@@ -167,6 +168,52 @@ class DailyScreenInstrumentedTest {
             if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
             else cursorStorage.edit().remove(cursorKey).commit()
         }
+    }
+
+    @Test
+    fun dailyHeadingPickerSurvivesImeInsetChangeAndOnlySavesAfterSelection() {
+        val repository = FakeRepository()
+        val imeVisible = mutableStateOf(true)
+        controller = DailyController(
+            repository = repository,
+            loadDay = { TodayResult.Success(day()) },
+            onUnauthorized = {},
+        )
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density, imeVisible.value) {
+                WindowInsets(bottom = if (imeVisible.value) with(density) { 280.dp.roundToPx() } else 0)
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    DailyScreen(
+                        controller = requireNotNull(controller),
+                        onNavigateToday = {},
+                        onNavigateNotes = {},
+                        onNavigateSettings = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { controller?.state?.document != null }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H3 見出し3").assertIsDisplayed()
+        assertEquals("opening the Daily picker does not save", 0, repository.updateCalls.get())
+        assertEquals("Daily body", controller?.state?.markdownBody)
+
+        composeRule.runOnIdle { imeVisible.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("H3 見出し3").assertIsDisplayed()
+        assertEquals("IME inset change while picker is open does not save", 0, repository.updateCalls.get())
+
+        composeRule.onNodeWithContentDescription("H3 見出し3").performClick()
+        composeRule.waitUntil(10_000) { repository.updateCalls.get() > 0 }
+        assertEquals("### Daily body", repository.lastUpdateBody)
     }
 
     @Test

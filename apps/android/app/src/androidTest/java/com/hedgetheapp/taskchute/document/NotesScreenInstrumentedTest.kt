@@ -400,6 +400,7 @@ class NotesScreenInstrumentedTest {
     @Test
     fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
         val latest = mutableStateOf(TextFieldValue("live", selection = TextRange(0, 4)))
+        val headingClicks = AtomicInteger()
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
@@ -412,19 +413,21 @@ class NotesScreenInstrumentedTest {
                             previousEdit.value = result.reversibleEdit
                             latest.value = result.value
                         },
+                        onHeadingClick = { headingClicks.incrementAndGet() },
                     )
                 }
             }
         }
 
         composeRule.onNodeWithContentDescription("\u592a\u5b57").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("\u898b\u51fa\u3057").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("見出しを選択").assertIsDisplayed()
+        composeRule.onNodeWithText("H").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u7b87\u6761\u66f8\u304d").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u30c1\u30a7\u30c3\u30af\u30ea\u30b9\u30c8").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u5f15\u7528").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u30ea\u30f3\u30af").assertIsDisplayed()
 
-        val actionBounds = listOf("太字", "見出し", "箇条書き", "チェックリスト", "引用", "リンク")
+        val actionBounds = listOf("太字", "見出しを選択", "箇条書き", "チェックリスト", "引用", "リンク")
             .map { composeRule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot }
         val pixelsPerDp = composeRule.density.density
         actionBounds.forEach { bounds ->
@@ -440,9 +443,13 @@ class NotesScreenInstrumentedTest {
         assertEquals("**live**", latest.value.text)
         assertEquals(TextRange(2, 6), latest.value.selection)
 
+        val beforeHeadingClick = latest.value
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        assertEquals("opening the heading menu is not a formatting edit", beforeHeadingClick, latest.value)
+        assertEquals(1, headingClicks.get())
+
         composeRule.runOnIdle { latest.value = TextFieldValue("heading") }
-        composeRule.onNodeWithContentDescription("見出し").performClick()
-        assertEquals("# heading", latest.value.text)
+        composeRule.onNodeWithContentDescription("見出しを選択").assertIsDisplayed()
 
         composeRule.runOnIdle { latest.value = TextFieldValue("bullet") }
         composeRule.onNodeWithContentDescription("箇条書き").performClick()
@@ -460,6 +467,81 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("リンク").performClick()
         assertEquals("[OpenAI](https://)", latest.value.text)
         assertEquals(TextRange(9, 17), latest.value.selection)
+    }
+
+    @Test
+    fun headingPickerIsNoOpUntilSelectedAndSurvivesSyntheticImeInsetChange() {
+        val body = mutableStateOf("Title")
+        val latest = mutableStateOf(TextFieldValue("Title"))
+        val imeVisible = mutableStateOf(true)
+        val saveCalls = AtomicInteger()
+        composeRule.setContent {
+            val platformDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.3f)) {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density, imeVisible.value) {
+                    WindowInsets(bottom = if (imeVisible.value) with(density) { 280.dp.roundToPx() } else 0)
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme {
+                        Box(Modifier.width(360.dp).fillMaxHeight()) {
+                            MarkdownLiveEditor(
+                                value = body.value,
+                                onValueChange = {
+                                    body.value = it
+                                    saveCalls.incrementAndGet()
+                                },
+                                enabled = true,
+                                modifier = Modifier.fillMaxSize(),
+                                onTextFieldValueChange = { latest.value = it },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+        val beforeOpen = latest.value
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithTag("markdown-heading-picker-title").assertIsDisplayed()
+        MarkdownHeadingLevel.values().forEach { level ->
+            composeRule.onNodeWithContentDescription(level.accessibilityLabel).assertIsDisplayed()
+            val heightDp = composeRule.onNodeWithTag("markdown-heading-option-h${level.level}")
+                .fetchSemanticsNode().boundsInRoot.height / composeRule.density.density
+            assertTrue("${level.accessibilityLabel} has at least a 48dp touch target", heightDp >= 48f)
+        }
+        assertEquals("opening the menu does not update source", "Title", body.value)
+        assertEquals("opening the menu keeps the source text", beforeOpen.text, latest.value.text)
+        assertEquals("opening the menu does not move selection", beforeOpen.selection, latest.value.selection)
+        assertEquals("opening the menu does not call the save path", 0, saveCalls.get())
+
+        composeRule.runOnIdle { imeVisible.value = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("markdown-heading-picker-title").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("H3 見出し3").assertIsDisplayed()
+
+        composeRule.onAllNodes(isRoot()).get(1).performTouchInput {
+            click(Offset(width * 0.5f, height * 0.12f))
+        }
+        composeRule.waitForIdle()
+        assertTrue(composeRule.onAllNodesWithTag("markdown-heading-picker-title").fetchSemanticsNodes().isEmpty())
+        assertEquals("cancel leaves source untouched", "Title", body.value)
+        assertEquals("cancel leaves editor text untouched", beforeOpen.text, latest.value.text)
+        assertEquals("cancel leaves caret and selection untouched", beforeOpen.selection, latest.value.selection)
+        assertEquals("cancel does not call the save path", 0, saveCalls.get())
+
+        composeRule.runOnIdle { imeVisible.value = true }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H3 見出し3").performClick()
+        composeRule.waitForIdle()
+        assertEquals("### Title", body.value)
+        assertEquals(1, saveCalls.get())
     }
 
     @Test
@@ -500,11 +582,26 @@ class NotesScreenInstrumentedTest {
         assertEquals("", body.value)
         assertEquals(TextRange(0), latest.value.selection)
 
-        composeRule.onNodeWithContentDescription("見出し").performClick()
-        assertEquals("# ", body.value)
-        composeRule.onNodeWithContentDescription("見出し").performClick()
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H2 見出し2").performClick()
+        assertEquals("## ", body.value)
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onAllNodes(isRoot()).get(1).performTouchInput {
+            click(Offset(width * 0.5f, height * 0.12f))
+        }
+        composeRule.waitForIdle()
+        assertEquals("cancel does not consume the same-level revert candidate", "## ", body.value)
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H2 見出し2").performClick()
         assertEquals("", body.value)
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H2 見出し2").performClick()
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H3 見出し3").performClick()
+        assertEquals("a different level replaces the prior action instead of reverting", "### ", body.value)
 
+        composeRule.runOnIdle { body.value = "" }
+        composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("リンク").performClick()
         assertEquals("[](https://)", body.value)
         composeRule.onNodeWithContentDescription("リンク").performClick()
@@ -543,6 +640,40 @@ class NotesScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("太字").performClick()
         assertTrue("the second press keeps intervening user input", body.value.contains("あ"))
+    }
+
+    @Test
+    fun headingActionDoesNotUndoJapaneseTextTypedAfterSelection() {
+        val body = mutableStateOf("")
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    MarkdownLiveEditor(
+                        value = body.value,
+                        onValueChange = { body.value = it },
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H2 見出し2").performClick()
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInput("あ")
+        composeRule.waitForIdle()
+        assertEquals("## あ", body.value)
+
+        composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+        composeRule.onNodeWithContentDescription("H2 見出し2").performClick()
+        assertEquals("typing between heading actions is preserved", "## あ", body.value)
     }
 
     @Test
@@ -826,6 +957,15 @@ class NotesScreenInstrumentedTest {
             composeRule.onNodeWithText("Task title").assertIsDisplayed()
             assertEquals(0, DocumentCursorPreferences(context).readCaretOffset("task-doc"))
             assertEquals(0, repository.taskUpdateCalls.get())
+
+            composeRule.onNodeWithContentDescription("見出しを選択").performClick()
+            composeRule.onNodeWithContentDescription("H4 見出し4").assertIsDisplayed()
+            assertEquals("opening the Task Note picker does not edit", "Task sheet body", controller?.state?.editor?.markdownBody)
+            assertEquals(0, repository.taskUpdateCalls.get())
+            composeRule.onNodeWithContentDescription("H4 見出し4").performClick()
+            assertEquals("#### Task sheet body", controller?.state?.editor?.markdownBody)
+            composeRule.waitUntil(10_000) { repository.taskUpdateCalls.get() > 0 }
+            assertEquals("#### Task sheet body", repository.lastTaskUpdateBody)
         } finally {
             if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
             else cursorStorage.edit().remove(cursorKey).commit()
@@ -1130,6 +1270,7 @@ class NotesScreenInstrumentedTest {
         val projectEnsureCalls = AtomicInteger()
         var lastCreate: StandaloneCreateRequest? = null
         var lastUpdate: StandaloneUpdateRequest? = null
+        var lastTaskUpdateBody: String? = null
         var lastProjectEnsure: ProjectPrimaryEnsureRequest? = null
         var taskDocument: AndroidDocument? = null
         var failUpdates = false
@@ -1232,6 +1373,7 @@ class NotesScreenInstrumentedTest {
 
         override fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult {
             taskUpdateCalls.incrementAndGet()
+            lastTaskUpdateBody = request.markdownBody
             return DocumentResult.Success(
                 AndroidDocument(request.documentId, DocumentKind.TASK_PRIMARY, "", request.markdownBody, request.expectedRevision + 1, taskId = request.taskId),
             )

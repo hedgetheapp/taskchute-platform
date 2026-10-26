@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,7 +29,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +58,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -125,19 +132,26 @@ object MarkdownEditCommands {
         }
     }
 
-    fun heading(source: String, selection: MarkdownSelection): MarkdownEditResult = editLines(source, selection, prefix = { line -> Regex("^#{1,6}\\s+").containsMatchIn(line) }) { line, allHavePrefix ->
-        val existing = Regex("^#{1,6}\\s+").find(line)
-        if (allHavePrefix) {
-            LineEdit(line.removeRange(existing!!.range), map = { offset -> (offset - existing.value.length).coerceAtLeast(0) })
-        } else if (existing != null) {
-            val body = line.removeRange(existing.range)
-            LineEdit("# $body", map = { offset ->
-                if (offset <= existing.range.first) offset + 2 else offset - existing.value.length + 2
-            })
-        } else {
-            LineEdit("# $line", map = { offset -> offset + 2 })
+    fun headingLevel(source: String, selection: MarkdownSelection, level: Int): MarkdownEditResult {
+        require(level in 1..5) { "Markdown heading picker supports levels H1 through H5" }
+        return editLines(source, selection, prefix = { line -> atxHeadingPrefix.containsMatchIn(line) }) { line, _ ->
+            val existing = atxHeadingPrefix.find(line)
+            if (existing == null) {
+                val newPrefix = "#".repeat(level) + " "
+                LineEdit(newPrefix + line, map = { offset -> offset + newPrefix.length })
+            } else {
+                val oldHashCount = existing.groupValues[1].length
+                val newPrefix = "#".repeat(level) + existing.groupValues[2]
+                val body = line.removeRange(existing.range)
+                LineEdit(newPrefix + body, map = { offset ->
+                    if (offset < oldHashCount) offset.coerceAtMost(level)
+                    else offset + newPrefix.length - existing.value.length
+                })
+            }
         }
     }
+
+    private val atxHeadingPrefix = Regex("^(#{1,6})(\\s+)")
 
     fun bullet(source: String, selection: MarkdownSelection): MarkdownEditResult = editLines(source, selection, prefix = { line -> line.startsWith("- ") }) { line, allHavePrefix ->
         if (allHavePrefix) {
@@ -236,12 +250,44 @@ object MarkdownEditCommands {
 
 internal enum class MarkdownToolbarActionId {
     BOLD,
-    HEADING,
+    HEADING_1,
+    HEADING_2,
+    HEADING_3,
+    HEADING_4,
+    HEADING_5,
     BULLET,
     CHECKBOX,
     QUOTE,
     LINK,
 }
+
+internal enum class MarkdownHeadingLevel(
+    val level: Int,
+    val action: MarkdownToolbarActionId,
+    val accessibilityLabel: String,
+) {
+    H1(1, MarkdownToolbarActionId.HEADING_1, "H1 見出し1"),
+    H2(2, MarkdownToolbarActionId.HEADING_2, "H2 見出し2"),
+    H3(3, MarkdownToolbarActionId.HEADING_3, "H3 見出し3"),
+    H4(4, MarkdownToolbarActionId.HEADING_4, "H4 見出し4"),
+    H5(5, MarkdownToolbarActionId.HEADING_5, "H5 見出し5"),
+}
+
+internal data class MarkdownHeadingPickerSnapshot(
+    val editorSessionKey: Any,
+    val canonicalSource: String,
+    val value: TextFieldValue,
+)
+
+internal fun isMarkdownHeadingPickerSnapshotCurrent(
+    snapshot: MarkdownHeadingPickerSnapshot,
+    editorSessionKey: Any,
+    canonicalSource: String,
+    current: TextFieldValue,
+): Boolean = snapshot.editorSessionKey == editorSessionKey &&
+    snapshot.canonicalSource == canonicalSource &&
+    snapshot.value.text == current.text &&
+    snapshot.value.selection == current.selection
 
 internal data class ReversibleMarkdownToolbarEdit(
     val action: MarkdownToolbarActionId,
@@ -268,16 +314,19 @@ internal fun applyMarkdownToolbarAction(
         )
     }
 
-    val command = when (action) {
-        MarkdownToolbarActionId.BOLD -> MarkdownEditCommands::bold
-        MarkdownToolbarActionId.HEADING -> MarkdownEditCommands::heading
-        MarkdownToolbarActionId.BULLET -> MarkdownEditCommands::bullet
-        MarkdownToolbarActionId.CHECKBOX -> MarkdownEditCommands::checkbox
-        MarkdownToolbarActionId.QUOTE -> MarkdownEditCommands::quote
-        MarkdownToolbarActionId.LINK -> MarkdownEditCommands::link
-    }
     val range = MarkdownSelection(current.selection.start, current.selection.end)
-    val edit = command(current.text, range)
+    val edit = when (action) {
+        MarkdownToolbarActionId.BOLD -> MarkdownEditCommands.bold(current.text, range)
+        MarkdownToolbarActionId.HEADING_1 -> MarkdownEditCommands.headingLevel(current.text, range, 1)
+        MarkdownToolbarActionId.HEADING_2 -> MarkdownEditCommands.headingLevel(current.text, range, 2)
+        MarkdownToolbarActionId.HEADING_3 -> MarkdownEditCommands.headingLevel(current.text, range, 3)
+        MarkdownToolbarActionId.HEADING_4 -> MarkdownEditCommands.headingLevel(current.text, range, 4)
+        MarkdownToolbarActionId.HEADING_5 -> MarkdownEditCommands.headingLevel(current.text, range, 5)
+        MarkdownToolbarActionId.BULLET -> MarkdownEditCommands.bullet(current.text, range)
+        MarkdownToolbarActionId.CHECKBOX -> MarkdownEditCommands.checkbox(current.text, range)
+        MarkdownToolbarActionId.QUOTE -> MarkdownEditCommands.quote(current.text, range)
+        MarkdownToolbarActionId.LINK -> MarkdownEditCommands.link(current.text, range)
+    }
     val composition = current.composition?.let {
         TextRange(edit.mapOffset(it.start), edit.mapOffset(it.end))
     }
@@ -517,6 +566,9 @@ fun MarkdownLiveEditor(
         mutableStateOf(initialMarkdownTextFieldValue(value, initialCaretOffset))
     }
     var reversibleToolbarEdit by remember(editorSessionKey) { mutableStateOf<ReversibleMarkdownToolbarEdit?>(null) }
+    var headingPickerOpen by remember(editorSessionKey) { mutableStateOf(false) }
+    var headingPickerSnapshot by remember(editorSessionKey) { mutableStateOf<MarkdownHeadingPickerSnapshot?>(null) }
+    var restoreBodyFocusAfterHeadingPicker by remember(editorSessionKey) { mutableStateOf(false) }
     var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var hasFocus by remember { mutableStateOf(false) }
@@ -634,6 +686,16 @@ fun MarkdownLiveEditor(
             fieldValue = clampMarkdownTextFieldValueToBody(fieldValue, value)
             currentCursorDocumentId.value?.let { documentId ->
                 cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(fieldValue.selection))
+            }
+        }
+    }
+
+    LaunchedEffect(headingPickerOpen, restoreBodyFocusAfterHeadingPicker, enabled) {
+        if (!headingPickerOpen && restoreBodyFocusAfterHeadingPicker) {
+            restoreBodyFocusAfterHeadingPicker = false
+            if (enabled) {
+                focusRequester.requestFocus()
+                keyboardController?.show()
             }
         }
     }
@@ -814,7 +876,7 @@ fun MarkdownLiveEditor(
                 BasicTextField(
                     value = fieldValue,
                     onValueChange = {
-                        reversibleToolbarEdit = null
+                        if (it != fieldValue) reversibleToolbarEdit = null
                         val previousText = fieldValue.text
                         if (staleTextAfterCheckboxToggle == it.text && it.text != previousText) {
                             staleTextAfterCheckboxToggle = null
@@ -845,7 +907,7 @@ fun MarkdownLiveEditor(
                         }
                         .onFocusChanged {
                             hasFocus = it.isFocused
-                            if (!it.isFocused) reversibleToolbarEdit = null
+                            if (!it.isFocused && !headingPickerOpen) reversibleToolbarEdit = null
                             onBodyFocusChanged?.invoke(it.isFocused)
                         },
                     decorationBox = { innerTextField ->
@@ -872,6 +934,41 @@ fun MarkdownLiveEditor(
                     onTextFieldValueObserved(result.value)
                     focusRequester.requestFocus()
                     keyboardController?.show()
+                },
+                onHeadingClick = {
+                    headingPickerSnapshot = MarkdownHeadingPickerSnapshot(editorSessionKey, value, fieldValue)
+                    restoreBodyFocusAfterHeadingPicker = false
+                    headingPickerOpen = true
+                },
+            )
+        }
+        if (headingPickerOpen) {
+            MarkdownHeadingPicker(
+                enabled = enabled,
+                onDismissRequest = {
+                    headingPickerSnapshot = null
+                    headingPickerOpen = false
+                    restoreBodyFocusAfterHeadingPicker = enabled
+                },
+                onLevelSelected = { level ->
+                    val snapshot = headingPickerSnapshot
+                    if (
+                        enabled && snapshot != null &&
+                        isMarkdownHeadingPickerSnapshotCurrent(snapshot, editorSessionKey, value, fieldValue)
+                    ) {
+                        val previousValue = fieldValue
+                        val result = applyMarkdownToolbarAction(fieldValue, level.action, reversibleToolbarEdit)
+                        reversibleToolbarEdit = result.reversibleEdit
+                        selectionRestoreAfterTap = null
+                        fieldValue = result.value
+                        if (result.value.text != previousValue.text) onValueChange(result.value.text)
+                        if (result.value != previousValue) onTextFieldValueObserved(result.value)
+                    } else {
+                        reversibleToolbarEdit = null
+                    }
+                    headingPickerSnapshot = null
+                    headingPickerOpen = false
+                    restoreBodyFocusAfterHeadingPicker = enabled
                 },
             )
         }
@@ -1000,6 +1097,7 @@ private fun visibleMarkdownLineNumberPlacements(
 internal fun MarkdownImeToolbar(
     modifier: Modifier,
     onAction: (MarkdownToolbarActionId) -> Unit,
+    onHeadingClick: () -> Unit,
 ) {
     Row(
         modifier = modifier.padding(horizontal = 4.dp),
@@ -1009,9 +1107,7 @@ internal fun MarkdownImeToolbar(
         MarkdownToolbarAction(R.drawable.ic_material_format_bold_24, "太字", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.BOLD)
         }
-        MarkdownToolbarAction(R.drawable.ic_material_format_h1_24, "見出し", modifier = Modifier.width(44.dp)) {
-            onAction(MarkdownToolbarActionId.HEADING)
-        }
+        MarkdownToolbarHeadingAction(modifier = Modifier.width(44.dp), onClick = onHeadingClick)
         MarkdownToolbarAction(R.drawable.ic_material_format_list_bulleted_24, "箇条書き", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.BULLET)
         }
@@ -1024,6 +1120,67 @@ internal fun MarkdownImeToolbar(
         MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.LINK)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MarkdownHeadingPicker(
+    enabled: Boolean,
+    onDismissRequest: () -> Unit,
+    onLevelSelected: (MarkdownHeadingLevel) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismissRequest) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("markdown-heading-picker"),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "見出しレベル",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp).testTag("markdown-heading-picker-title"),
+            )
+            MarkdownHeadingLevel.values().forEach { level ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable(enabled = enabled) { onLevelSelected(level) }
+                        .semantics {
+                            contentDescription = level.accessibilityLabel
+                            role = Role.Button
+                        }
+                        .testTag("markdown-heading-option-h${level.level}"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = level.accessibilityLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownToolbarHeadingAction(modifier: Modifier, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.height(48.dp).focusProperties { canFocus = false }
+            .semantics { contentDescription = "見出しを選択" },
+    ) {
+        Text(
+            text = "H",
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
