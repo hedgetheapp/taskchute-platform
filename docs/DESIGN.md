@@ -89,6 +89,8 @@ Android Notesのstandalone editorとToday Task Primary Noteは同じborderless C
 
 body focus中にIMEが表示されている場合だけ、約48dpの横スクロール可能なtoolbarをIME直上に置く。順序はBold、Heading、Bulleted list、Checkbox、Quote、Linkとし、toolbar操作はbody focus・IME・selectionを維持する。D-111のstatus footer、autosave、safe flush、conflict / ambiguous barrier、Task title authorityを維持し、タイトルfocusではtoolbarを表示しない。未対応Markdownは通常のeditable sourceとして表示し、linkはv0.1でnavigationしない。
 
+D-183CのHeading slotは44dp幅・48dp高の`H`ボタンとし、押下でsource/caretを変更せず、底部のcompact pickerに`H1 見出し1`〜`H5 見出し5`を表示する。選択したlevelだけが現在caret行または選択されたsource行へ`#` prefixを適用する。既存のATX H1〜H6はlevel prefixだけを置換し、周囲の本文とselection mappingを維持する。H6はpickerに含めないが、preview render対応は残す。pickerはoutside/Back dismissalで無変更のまま閉じ、IME visibility変化でも開いた状態を保つ。H1〜H5はlevelごとに独立したD-183B可逆action identityを持ち、同一level再選択は編集前のsource/selectionへ戻す。picker再表示とcancelはこのrevert候補を消費しない。
+
 ## D-134 Android Running Progress Player
 
 current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。
