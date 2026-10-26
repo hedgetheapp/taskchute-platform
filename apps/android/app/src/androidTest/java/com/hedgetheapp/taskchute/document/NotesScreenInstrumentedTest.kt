@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
@@ -513,14 +514,103 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
-    fun markdownHorizontalRuleIsOneViewportWideRowAtNarrowFontScaleAndStaysRawWhenActive() {
-        val body = mutableStateOf("top\n\n---\nafter")
-        val latest = mutableStateOf(TextFieldValue(body.value))
+    fun markdownHorizontalRuleIsContinuousWhenActiveAndSourceEditIsExplicitAtNarrowFontScale() {
+        val initial = "first\nsecond"
+        val body = mutableStateOf(initial)
+        val latest = mutableStateOf(TextFieldValue(initial))
+        val contentWrites = AtomicInteger(0)
+        val hostWidth = mutableStateOf(280)
+        val editorSessionKey = mutableStateOf("first-open")
+        composeRule.setContent {
+            val platformDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.3f)) {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme {
+                        Box(Modifier.width(hostWidth.value.dp).height(240.dp).testTag("markdown-hr-host")) {
+                            MarkdownLiveEditor(
+                                value = body.value,
+                                onValueChange = {
+                                    contentWrites.incrementAndGet()
+                                    body.value = it
+                                },
+                                enabled = true,
+                                modifier = Modifier.fillMaxSize(),
+                                onTextFieldValueChange = { latest.value = it },
+                                editorSessionKey = editorSessionKey.value,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val editor = composeRule.onNodeWithContentDescription("Markdown body")
+        val toolbar = composeRule.onNodeWithTag("markdown-ime-toolbar")
+        editor.performClick()
+        editor.performTextInputSelection(TextRange(8))
+        val toolbarBounds = toolbar.fetchSemanticsNode().boundsInRoot
+        repeat(3) {
+            toolbar.performTouchInput {
+                swipe(
+                    start = Offset(toolbarBounds.width * 0.85f, toolbarBounds.height * 0.5f),
+                    end = Offset(toolbarBounds.width * 0.15f, toolbarBounds.height * 0.5f),
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("区切り線").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertEquals("first\n\n---\nsecond", body.value)
+        val ruleStart = body.value.indexOf("---")
+        assertEquals(TextRange(13), latest.value.selection)
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+
+        editor.performTextInputSelection(TextRange(ruleStart + 1))
+        composeRule.waitForIdle()
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+        composeRule.onNodeWithContentDescription("区切り線ソースを編集").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertEquals(body.value, latest.value.text)
+        assertEquals(TextRange(ruleStart, ruleStart + 3), latest.value.selection)
+        assertEquals(0, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+        assertEquals(1, contentWrites.get())
+
+        composeRule.onNodeWithContentDescription("区切り線プレビューに戻る").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+        assertEquals(1, contentWrites.get())
+
+        editor.performTextInputSelection(TextRange(0))
+        composeRule.waitForIdle()
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+
+        hostWidth.value = 360
+        composeRule.waitForIdle()
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+
+        editorSessionKey.value = "reopened-editor"
+        composeRule.waitForIdle()
+        assertEquals("first\n\n---\nsecond", body.value)
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+    }
+
+    @Test
+    fun multipleHorizontalRulesRemainSingleFullWidthLinesAfterScrollingAtFontScale130() {
+        val source = buildString {
+            append("---\n")
+            repeat(30) { line -> append("row-$line\n") }
+            append("\n---\n\n---\nend")
+        }
+        val body = mutableStateOf(source)
+        val latest = mutableStateOf(TextFieldValue(source))
         composeRule.setContent {
             val platformDensity = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.3f)) {
                 MaterialTheme {
-                    Box(Modifier.width(280.dp).height(240.dp)) {
+                    Box(Modifier.width(280.dp).height(180.dp).testTag("markdown-hr-scroll-host")) {
                         MarkdownLiveEditor(
                             value = body.value,
                             onValueChange = { body.value = it },
@@ -534,14 +624,14 @@ class NotesScreenInstrumentedTest {
         }
 
         val editor = composeRule.onNodeWithContentDescription("Markdown body")
-        composeRule.waitForIdle()
-        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
-
         editor.performClick()
-        editor.performTextInputSelection(TextRange(6))
+        editor.performTextInputSelection(TextRange(source.length))
         composeRule.waitForIdle()
-        assertEquals(TextRange(6), latest.value.selection)
-        assertEquals(0, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+        assertEquals(source, latest.value.text)
+        assertTrue("the final two divider rows remain separately visible after caret scrolling", fullWidthColorRuns(
+            composeRule.onNodeWithTag("markdown-hr-scroll-host").captureToImage(),
+            TaskChuteColors.SecondaryText,
+        ) >= 2)
     }
 
     @Test
@@ -1093,6 +1183,34 @@ class NotesScreenInstrumentedTest {
             assertEquals("#### Task sheet body", controller?.state?.editor?.markdownBody)
             composeRule.waitUntil(10_000) { repository.taskUpdateCalls.get() > 0 }
             assertEquals("#### Task sheet body", repository.lastTaskUpdateBody)
+
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            val toolbar = composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+            val toolbarBounds = toolbar.fetchSemanticsNode().boundsInRoot
+            repeat(3) {
+                toolbar.performTouchInput {
+                    swipe(
+                        start = Offset(toolbarBounds.width * 0.85f, toolbarBounds.height * 0.5f),
+                        end = Offset(toolbarBounds.width * 0.15f, toolbarBounds.height * 0.5f),
+                    )
+                }
+            }
+            composeRule.onNodeWithContentDescription("区切り線").performClick()
+            composeRule.waitUntil(10_000) {
+                repository.lastTaskUpdateBody?.startsWith("---\n") == true
+            }
+            val taskSource = controller?.state?.editor?.markdownBody
+            assertTrue(taskSource?.startsWith("---\n") == true)
+            val updatesAfterInsertion = repository.taskUpdateCalls.get()
+            composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(1))
+            composeRule.onNodeWithContentDescription("区切り線ソースを編集").performClick()
+            assertEquals("Task Note source edit is presentation-only", taskSource, controller?.state?.editor?.markdownBody)
+            composeRule.onNodeWithContentDescription("区切り線プレビューに戻る").performClick()
+            composeRule.waitForIdle()
+            assertEquals("Task Note preview toggle does not alter source", taskSource, controller?.state?.editor?.markdownBody)
+            assertEquals("Task Note presentation toggles do not save", updatesAfterInsertion, repository.taskUpdateCalls.get())
         } finally {
             if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
             else cursorStorage.edit().remove(cursorKey).commit()

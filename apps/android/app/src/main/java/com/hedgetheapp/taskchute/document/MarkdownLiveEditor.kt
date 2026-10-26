@@ -221,14 +221,33 @@ object MarkdownEditCommands {
         val caret = selection.end.coerceIn(0, source.length)
         val lineIndex = lines.indexOfLast { caret >= it.start }.coerceAtLeast(0)
         val line = lines[lineIndex]
-        val needsTrailingSeparator = line.text.isNotEmpty() || line.lineEnding.isNotEmpty() ||
-            (line.start == source.length && source.endsWith('\n'))
+        val previousLine = lines.getOrNull(lineIndex - 1)
+        val isExistingSetextUnderline = previousLine != null &&
+            hyphenThematicBreakPattern.matches(line.text) &&
+            mayBeSetextHeadingText(previousLine.text)
         val separator = line.lineEnding.takeIf { it.isNotEmpty() }
             ?: lines.take(lineIndex).lastOrNull { it.lineEnding.isNotEmpty() }?.lineEnding
             ?: "\n"
-        val inserted = "---" + if (needsTrailingSeparator) separator else ""
-        val text = source.substring(0, line.start) + inserted + source.substring(line.start)
-        fun mapOffset(offset: Int): Int = if (offset >= line.start) offset + inserted.length else offset
+        val insertionPoint = if (isExistingSetextUnderline) {
+            line.start + line.text.length + line.lineEnding.length
+        } else {
+            line.start
+        }
+        val needsLeadingBlank = when {
+            isExistingSetextUnderline -> line.lineEnding.isEmpty() ||
+                (insertionPoint == source.length && source.endsWith('\n'))
+            else -> previousLine != null && mayBeSetextHeadingText(previousLine.text)
+        }
+        val needsTrailingSeparator = if (isExistingSetextUnderline) {
+            insertionPoint < source.length
+        } else {
+            line.text.isNotEmpty() || line.lineEnding.isNotEmpty() ||
+                (line.start == source.length && source.endsWith('\n'))
+        }
+        val inserted = (if (needsLeadingBlank) separator else "") + "---" +
+            (if (needsTrailingSeparator) separator else "")
+        val text = source.substring(0, insertionPoint) + inserted + source.substring(insertionPoint)
+        fun mapOffset(offset: Int): Int = if (offset >= insertionPoint) offset + inserted.length else offset
         return MarkdownEditResult(
             text = text,
             selection = MarkdownSelection(mapOffset(selection.start), mapOffset(selection.end)),
@@ -651,11 +670,22 @@ internal fun markdownThematicBreakLineIndexes(source: String): Set<Int> {
     }
 }
 
-internal fun markdownHorizontalRuleSourceStarts(source: String, activeSelection: MarkdownSelection?): List<Int> {
+internal fun markdownActiveThematicBreakSourceStart(source: String, selection: MarkdownSelection?): Int? {
+    val activeSelection = selection ?: return null
     val lines = sourceLines(source)
-    val active = activeSelection?.let { touchedLineIndexes(lines, it.normalized(source.length)) }.orEmpty()
+    val active = touchedLineIndexes(lines, activeSelection.normalized(source.length))
     val ruleIndexes = markdownThematicBreakLineIndexes(source)
-    return lines.indices.filter { it in ruleIndexes && it !in active }.map { lines[it].start }
+    return lines.indices.firstOrNull { it in ruleIndexes && it in active }?.let { lines[it].start }
+}
+
+internal fun markdownHorizontalRuleSourceStarts(
+    source: String,
+    rawThematicBreakSourceStart: Int? = null,
+): List<Int> {
+    val thematicBreaks = markdownThematicBreakLineIndexes(source)
+    return sourceLines(source).mapIndexedNotNull { index, line ->
+        line.start.takeIf { index in thematicBreaks && it != rawThematicBreakSourceStart }
+    }
 }
 
 private fun mayBeSetextHeadingText(line: String): Boolean {
@@ -669,7 +699,10 @@ private fun mayBeSetextHeadingText(line: String): Boolean {
     return true
 }
 
-internal class MarkdownPreviewTransformation(private val activeSelection: MarkdownSelection?) : VisualTransformation {
+internal class MarkdownPreviewTransformation(
+    private val activeSelection: MarkdownSelection?,
+    private val rawThematicBreakSourceStart: Int? = null,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val source = text.text
         val lines = sourceLines(source)
@@ -677,10 +710,16 @@ internal class MarkdownPreviewTransformation(private val activeSelection: Markdo
         val thematicBreaks = markdownThematicBreakLineIndexes(source)
         val builder = PreviewBuilder(source)
         lines.forEachIndexed { index, line ->
-            if (index in active) {
+            if (index in thematicBreaks) {
+                if (line.start == rawThematicBreakSourceStart) {
+                    appendTextWithInteractiveLinks(builder, source, line.start, line.end)
+                } else {
+                    appendRenderedLine(builder, source, line, isThematicBreak = true)
+                }
+            } else if (index in active) {
                 appendTextWithInteractiveLinks(builder, source, line.start, line.end)
             } else {
-                appendRenderedLine(builder, source, line, index in thematicBreaks)
+                appendRenderedLine(builder, source, line, isThematicBreak = false)
             }
             if (line.hasNewline) builder.append(line.end, line.end + line.lineEnding.length, line.lineEnding)
         }
@@ -929,6 +968,7 @@ fun MarkdownLiveEditor(
     }
     var handledEnterEcho by remember(editorSessionKey) { mutableStateOf<MarkdownEnterEcho?>(null) }
     var reversibleToolbarEdit by remember(editorSessionKey) { mutableStateOf<ReversibleMarkdownToolbarEdit?>(null) }
+    var rawThematicBreakSourceStart by remember(editorSessionKey) { mutableStateOf<Int?>(null) }
     var headingPickerOpen by remember(editorSessionKey) { mutableStateOf(false) }
     var headingPickerSnapshot by remember(editorSessionKey) { mutableStateOf<MarkdownHeadingPickerSnapshot?>(null) }
     var restoreBodyFocusAfterHeadingPicker by remember(editorSessionKey) { mutableStateOf(false) }
@@ -951,13 +991,28 @@ fun MarkdownLiveEditor(
         currentTextFieldValueChange.value?.invoke(next)
     }
     val previewSelection = if (hasFocus) MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end) else null
-    val previewTransformation = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, hasFocus) {
+    val activeThematicBreakSourceStart = markdownActiveThematicBreakSourceStart(fieldValue.text, previewSelection)
+    val activeRawThematicBreakSourceStart = rawThematicBreakSourceStart
+        .takeIf { it != null && it == activeThematicBreakSourceStart }
+    val previewTransformation = remember(
+        fieldValue.text,
+        fieldValue.selection.start,
+        fieldValue.selection.end,
+        hasFocus,
+        activeRawThematicBreakSourceStart,
+    ) {
         MarkdownPreviewTransformation(
             previewSelection,
+            rawThematicBreakSourceStart = activeRawThematicBreakSourceStart,
         )
     }
-    val horizontalRuleStarts = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, hasFocus) {
-        markdownHorizontalRuleSourceStarts(fieldValue.text, previewSelection)
+    val horizontalRuleStarts = remember(fieldValue.text, activeRawThematicBreakSourceStart) {
+        markdownHorizontalRuleSourceStarts(fieldValue.text, activeRawThematicBreakSourceStart)
+    }
+    val horizontalRuleSourceActionLabel = when {
+        activeThematicBreakSourceStart == null -> null
+        activeRawThematicBreakSourceStart == activeThematicBreakSourceStart -> "区切り線プレビューに戻る"
+        else -> "区切り線ソースを編集"
     }
     val transformedPreview = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
         previewTransformation.filter(AnnotatedString(fieldValue.text))
@@ -1050,6 +1105,7 @@ fun MarkdownLiveEditor(
         if (fieldValue.text != value) {
             handledEnterEcho = null
             reversibleToolbarEdit = null
+            rawThematicBreakSourceStart = null
             fieldValue = clampMarkdownTextFieldValueToBody(fieldValue, value)
             currentCursorDocumentId.value?.let { documentId ->
                 cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(fieldValue.selection))
@@ -1248,6 +1304,13 @@ fun MarkdownLiveEditor(
                         }
                         if (handledEnterEcho?.output != fieldValue) handledEnterEcho = null
                         if (proposed != fieldValue) reversibleToolbarEdit = null
+                        val proposedActiveRule = markdownActiveThematicBreakSourceStart(
+                            proposed.text,
+                            MarkdownSelection(proposed.selection.start, proposed.selection.end),
+                        )
+                        if (rawThematicBreakSourceStart != null && proposedActiveRule != rawThematicBreakSourceStart) {
+                            rawThematicBreakSourceStart = null
+                        }
                         val previousText = fieldValue.text
                         if (staleTextAfterCheckboxToggle == proposed.text && proposed.text != previousText) {
                             staleTextAfterCheckboxToggle = null
@@ -1300,6 +1363,7 @@ fun MarkdownLiveEditor(
                         }
                         .onFocusChanged {
                             hasFocus = it.isFocused
+                            if (!it.isFocused) rawThematicBreakSourceStart = null
                             if (!it.isFocused && !headingPickerOpen) reversibleToolbarEdit = null
                             onBodyFocusChanged?.invoke(it.isFocused)
                         },
@@ -1336,6 +1400,32 @@ fun MarkdownLiveEditor(
                     headingPickerSnapshot = MarkdownHeadingPickerSnapshot(editorSessionKey, value, fieldValue)
                     restoreBodyFocusAfterHeadingPicker = false
                     headingPickerOpen = true
+                },
+                horizontalRuleSourceActionLabel = horizontalRuleSourceActionLabel,
+                horizontalRuleSourceActionIcon = if (activeRawThematicBreakSourceStart != null) {
+                    R.drawable.ic_material_horizontal_rule_24
+                } else {
+                    R.drawable.ic_material_edit_24
+                },
+                onHorizontalRuleSourceAction = {
+                    val sourceStart = activeThematicBreakSourceStart
+                    val line = sourceStart?.let { start -> sourceLines(fieldValue.text).firstOrNull { it.start == start } }
+                    if (sourceStart != null && line != null) {
+                        reversibleToolbarEdit = null
+                        selectionRestoreAfterTap = null
+                        if (activeRawThematicBreakSourceStart == sourceStart) {
+                            rawThematicBreakSourceStart = null
+                        } else {
+                            rawThematicBreakSourceStart = sourceStart
+                            val next = fieldValue.copy(selection = TextRange(line.start, line.end))
+                            if (next != fieldValue) {
+                                fieldValue = next
+                                onTextFieldValueObserved(next)
+                            }
+                        }
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
                 },
             )
         }
@@ -1496,6 +1586,9 @@ internal fun MarkdownImeToolbar(
     scrollState: ScrollState = rememberScrollState(),
     onAction: (MarkdownToolbarActionId) -> Unit,
     onHeadingClick: () -> Unit,
+    horizontalRuleSourceActionLabel: String? = null,
+    horizontalRuleSourceActionIcon: Int = R.drawable.ic_material_edit_24,
+    onHorizontalRuleSourceAction: () -> Unit = {},
 ) {
     Row(
         modifier = modifier.horizontalScroll(scrollState).padding(horizontal = 4.dp).testTag("markdown-ime-toolbar"),
@@ -1520,6 +1613,14 @@ internal fun MarkdownImeToolbar(
         }
         MarkdownToolbarAction(R.drawable.ic_material_horizontal_rule_24, "区切り線", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.HORIZONTAL_RULE)
+        }
+        if (horizontalRuleSourceActionLabel != null) {
+            MarkdownToolbarAction(
+                horizontalRuleSourceActionIcon,
+                horizontalRuleSourceActionLabel,
+                modifier = Modifier.width(44.dp),
+                onClick = onHorizontalRuleSourceAction,
+            )
         }
         MarkdownToolbarAction(R.drawable.ic_material_format_indent_increase_24, "インデント", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.INDENT)

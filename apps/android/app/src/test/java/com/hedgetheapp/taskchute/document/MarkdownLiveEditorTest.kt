@@ -57,8 +57,8 @@ class MarkdownLiveEditorTest {
         assertEquals(4, markdownSourceLineStarts(source).size)
         assertEquals(4, markdownSourceLineStarts(transformed.text.text).size)
         assertEquals(setOf(2), markdownThematicBreakLineIndexes(source))
-        assertEquals(listOf(5), markdownHorizontalRuleSourceStarts(source, null))
-        assertEquals(emptyList<Int>(), markdownHorizontalRuleSourceStarts(source, MarkdownSelection(6, 6)))
+        assertEquals(listOf(5), markdownHorizontalRuleSourceStarts(source))
+        assertEquals(5, markdownActiveThematicBreakSourceStart(source, MarkdownSelection(6, 6)))
 
         var previousDisplay = 0
         (0..source.length).forEach { sourceOffset ->
@@ -76,7 +76,13 @@ class MarkdownLiveEditorTest {
         }
 
         val active = MarkdownPreviewTransformation(MarkdownSelection(6, 6)).filter(AnnotatedString(source))
-        assertEquals("top\n\n---\nTail", active.text.text)
+        assertEquals("top\n\n\nTail", active.text.text)
+        assertEquals(emptyList<Int>(), markdownHorizontalRuleSourceStarts(source, rawThematicBreakSourceStart = 5))
+        val explicitSourceEdit = MarkdownPreviewTransformation(
+            MarkdownSelection(6, 6),
+            rawThematicBreakSourceStart = 5,
+        ).filter(AnnotatedString(source))
+        assertEquals("top\n\n---\nTail", explicitSourceEdit.text.text)
     }
 
     @Test
@@ -84,6 +90,11 @@ class MarkdownLiveEditorTest {
         assertEquals(setOf(0, 1, 2), markdownThematicBreakLineIndexes("---\n* * *\n___"))
         assertEquals(emptySet<Int>(), markdownThematicBreakLineIndexes("--\na---b\nTitle\n---"))
         assertEquals(setOf(2), markdownThematicBreakLineIndexes("Title\n\n---"))
+        assertEquals(emptySet<Int>(), markdownThematicBreakLineIndexes("Title\n---"))
+
+        val setext = MarkdownPreviewTransformation(null).filter(AnnotatedString("Title\n---"))
+        assertEquals("Title\n---", setext.text.text)
+        assertEquals(emptyList<Int>(), markdownHorizontalRuleSourceStarts("Title\n---"))
     }
 
     @Test
@@ -354,12 +365,21 @@ class MarkdownLiveEditorTest {
     }
 
     @Test
-    fun horizontalRuleAddsOnlyTheNeededLineSeparatorsAndKeepsNewlineStyle() {
+    fun horizontalRuleAddsSetextSafeBoundariesAndKeepsNewlineStyleAndCaretMapping() {
         assertEquals("---", MarkdownEditCommands.horizontalRule("", MarkdownSelection(0, 0)).text)
         assertEquals("---\nprose", MarkdownEditCommands.horizontalRule("prose", MarkdownSelection(2, 2)).text)
-        assertEquals("first\n---\nsecond", MarkdownEditCommands.horizontalRule("first\nsecond", MarkdownSelection(8, 8)).text)
-        assertEquals("first\r\n---\r\nsecond", MarkdownEditCommands.horizontalRule("first\r\nsecond", MarkdownSelection(8, 8)).text)
-        assertEquals("first\n---\n", MarkdownEditCommands.horizontalRule("first\n", MarkdownSelection(6, 6)).text)
+        val insertedBetweenParagraphLines = MarkdownEditCommands.horizontalRule("first\nsecond", MarkdownSelection(8, 8))
+        assertEquals("first\n\n---\nsecond", insertedBetweenParagraphLines.text)
+        assertEquals(MarkdownSelection(13, 13), insertedBetweenParagraphLines.selection)
+        assertEquals(13, insertedBetweenParagraphLines.mapOffset(8))
+        assertEquals(setOf(2), markdownThematicBreakLineIndexes(insertedBetweenParagraphLines.text))
+        assertEquals("first\r\n\r\n---\r\nsecond", MarkdownEditCommands.horizontalRule("first\r\nsecond", MarkdownSelection(8, 8)).text)
+        assertEquals("first\n\n---\nsecond", MarkdownEditCommands.horizontalRule("first\n\nsecond", MarkdownSelection(8, 8)).text)
+        assertEquals("first\n\n---\n", MarkdownEditCommands.horizontalRule("first\n", MarkdownSelection(6, 6)).text)
+
+        val preserveSetext = MarkdownEditCommands.horizontalRule("Title\n---", MarkdownSelection(9, 9))
+        assertEquals("Title\n---\n---", preserveSetext.text)
+        assertEquals(setOf(2), markdownThematicBreakLineIndexes(preserveSetext.text))
 
         val preview = MarkdownPreviewTransformation(MarkdownSelection(35, 35))
             .filter(AnnotatedString("---\nprose -- keep"))

@@ -1,3 +1,17 @@
+## D-185 Android horizontal rule visible fix v0.3 — 2026-10-26
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D185-V03-COMMANDS | Shared Android Markdown editor | Insert a standalone HR without Setext reinterpretation; preserve source, blank rows, line endings and offset mapping; retain existing Setext source | `MarkdownLiveEditorTest` `49 / 49 PASS`; covers empty/prose/blank/end insertion, LF/CRLF, `mapOffset`, active transformation, explicit raw-source override, preserved `Title\n---`, and insertion after its existing pair. | PASS / JVM |
+| D185-V03-API33 | Notes shared editor | Immediately show one continuous HR while focused/active with synthetic IME; preserve raw-source editability, avoid writes on mode toggle, and keep multiple lines full-width after scrolling at 280dp/fontScale 1.3 | `markdownHorizontalRuleIsContinuousWhenActiveAndSourceEditIsExplicitAtNarrowFontScale` `1 / 1 PASS`; `multipleHorizontalRulesRemainSingleFullWidthLinesAfterScrollingAtFontScale130` `1 / 1 PASS`. | PASS / FOCUSED |
+| D185-V03-NOTES-GATE | Notes shared surface | Run the Notes API 33 runtime gate including autosave/editor flows | `scripts/android-qa.ps1 -Surface Notes` `40 / 40 PASS`; instrumentation exit `0`, post-test app install/activity resolution PASS, app crash log empty. The gate preceded the extra host-specific smoke assertions below; the same final implementation was then checked with those focused tests. | PASS / API 33 |
+| D185-V03-DAILY-SMOKE | Daily editor | Insert an HR and verify explicit source editability and no extra save on preview/source toggles | API 33 `dailyHorizontalRuleCanBeRevealedForEditingWithoutExtraSave` `1 / 1 PASS`; source `---\nDaily body`; repository write count unchanged during toggles. | PASS / FOCUSED |
+| D185-V03-TASK-NOTE-SMOKE | Task Note sheet | Insert an HR and verify explicit source editability and no extra save on preview/source toggles | API 33 `taskNoteSheetShowsToolbarAfterBlankTapWithImeInsets` `1 / 1 PASS` on the final source; underlying Task Note source remains intact during toggles and update count does not increase. | PASS / FOCUSED |
+| D185-V03-CI-APK | Exact source SHA / signed Phone APK handoff | Confirm exact-SHA CI, nonprod signer, and matching Phone APK artifact | Source SHA, Actions run, artifact ID, expiry, ZIP/APK SHA-256, package/version and signer are pending. | PENDING |
+| D185-V03-BOUNDARY | Data / device | Keep existing notes unchanged; distinguish synthetic insets from physical device evidence | Mode toggles assert no content writes. Physical OS IME NOT_VERIFIED; Galaxy S23 NOT_RUN; Product Verified NO. | PASS / BOUNDARY |
+
+The v0.2 rows below preserve their historical evidence and active-row behavior at source SHA `3f14f960f978469298d3f70024604e839d7ac775`. v0.3 supersedes only v0.2's active thematic-break raw presentation rule; do not reinterpret its historical test result.
+
 ## D-185 Android Markdown editor corrective v0.2 — 2026-10-26
 
 | ID | Area | Requirement | Evidence | Status |

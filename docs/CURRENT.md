@@ -1,3 +1,9 @@
+### D-185 Android horizontal rule visible fix v0.3 — 2026-10-26
+
+**Status: implementation in progress / Product Verified NO / Released NO.** v0.3 supersedes only D-185 v0.2's rule that an active thematic-break source row must remain raw. A standalone rule now remains a single continuous editor-body-width line while active, including focus and synthetic IME states. The contextual `区切り線ソースを編集` action explicitly selects and reveals its underlying `---`; toggling source/preview mode does not write note content. Toolbar insertion adds the minimal blank separator required to avoid Setext interpretation. Pre-existing `Title\n---` stays unchanged as a Setext candidate, and inserting from its underline adds a new rule after that pair.
+
+Local evidence: `MarkdownLiveEditorTest` 49 / 49 PASS; `:app:compileDebugAndroidTestKotlin :app:assembleDebug` PASS; both API 33 horizontal-rule tests PASS 1 / 1 (`markdownHorizontalRuleIsContinuousWhenActiveAndSourceEditIsExplicitAtNarrowFontScale`, `multipleHorizontalRulesRemainSingleFullWidthLinesAfterScrollingAtFontScale130`); `scripts/android-qa.ps1 -Surface Notes` 40 / 40 PASS with instrumentation exit 0, successful post-test install/activity resolution and no app crash entries. The final-source focused Daily horizontal-rule smoke and Task Note sheet smoke each passed 1 / 1; toggling source/preview does not increase repository save count. The Notes gate preceded the additional host-specific smoke assertions, which were run individually on the final source. Exact implementation SHA, CI run, signed Phone APK artifact and final remote state are pending. All Compose IME evidence uses synthetic insets; actual OS IME NOT_VERIFIED / Galaxy S23 NOT_RUN / Product Verified NO / Production NOT_RUN / Released NO. See the v0.3 decision and the appended test matrix section.
+
 ### D-184 Android Markdown editor extensions — 2026-10-26
 
 ### D-185 Android Markdown editor corrective v0.2 — 2026-10-26

@@ -12,13 +12,16 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -168,6 +171,59 @@ class DailyScreenInstrumentedTest {
             if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
             else cursorStorage.edit().remove(cursorKey).commit()
         }
+    }
+
+    @Test
+    fun dailyHorizontalRuleCanBeRevealedForEditingWithoutExtraSave() {
+        val repository = FakeRepository()
+        controller = DailyController(
+            repository = repository,
+            loadDay = { TodayResult.Success(day()) },
+            onUnauthorized = {},
+        )
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme {
+                    DailyScreen(
+                        controller = requireNotNull(controller),
+                        onNavigateToday = {},
+                        onNavigateNotes = {},
+                        onNavigateSettings = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { controller?.state?.document != null }
+
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        val toolbar = composeRule.onNodeWithTag("markdown-ime-toolbar")
+        toolbar.performTouchInput {
+            repeat(3) {
+                swipe(
+                    start = Offset(width * 0.9f, height * 0.5f),
+                    end = Offset(width * 0.1f, height * 0.5f),
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("区切り線").performClick()
+        composeRule.waitUntil(10_000) { repository.updateCalls.get() > 0 }
+        assertEquals("---\nDaily body", controller?.state?.markdownBody)
+        val updatesAfterInsertion = repository.updateCalls.get()
+
+        val editor = composeRule.onNodeWithContentDescription("Markdown body")
+        editor.performTextInputSelection(TextRange(1))
+        composeRule.onNodeWithContentDescription("区切り線ソースを編集").performClick()
+        assertEquals("editing the Daily source does not change its Markdown", "---\nDaily body", controller?.state?.markdownBody)
+        composeRule.onNodeWithContentDescription("区切り線プレビューに戻る").performClick()
+        composeRule.waitForIdle()
+        assertEquals("preview toggle does not change Daily source", "---\nDaily body", controller?.state?.markdownBody)
+        assertEquals("preview/source toggles do not trigger a Daily save", updatesAfterInsertion, repository.updateCalls.get())
     }
 
     @Test

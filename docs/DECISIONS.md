@@ -1,10 +1,10 @@
-## D-185 — Android Markdown editor corrective v0.2
+## D-185 — Android Markdown editor corrective v0.3
 
 Status: **Approved / implementation in progress / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
 
-Canonical Decision: `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V02.md`.
+Canonical Decision: `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V03.md`.
 
-Android-only correction to D-184: inactive standalone thematic breaks draw as one viewport-width divider while the active source row remains raw; a single supported IME Enter after a valid ordered-list item continues with the next number; and the underline command/button/preview are removed while persisted source bytes remain untouched and Markdown link underlining stays. Product Owner explicitly approved Option B for line moves: exchange the adjacent blank logical row as part of the move and permit terminal-newline presence to change, including `a\n\nb` with trailing `b` moved up => `a\nb\n`. This supersedes D-184's terminal-newline no-op rule. Diagnosis also found and corrected a duplicated final empty `sourceLines` row that made a caret at `a\nb\n` appear to target a phantom blank row. No API, Worker, schema, migration, Web, dependency, production, or release change.
+Android-only correction to D-184. v0.2 evidence and its ordered-list Enter, line-move, and underline decisions remain in `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V02.md`. v0.3 supersedes only the v0.2 active thematic-break presentation rule: an active standalone thematic break now continues to render as one continuous full-width divider. The contextual `区切り線ソースを編集` action reveals/selects the original `---`; preview/edit toggles do not write source. Toolbar insertion creates the minimal blank separator needed to avoid interpreting the new hyphen row as a Setext underline, while preserving existing `Title\n---` classification and source text. No API, Worker, schema, migration, Web, dependency, production, or release change.
 
 ## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
 
