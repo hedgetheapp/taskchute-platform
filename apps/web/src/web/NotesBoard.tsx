@@ -97,10 +97,12 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   const [notice, setNotice] = useState<string | null>(null);
   const [latestCanonical, setLatestCanonical] = useState<ProjectPrimaryDocument | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateProjectPrimaryDocumentRequest | null>(null);
+  const [unresolvedInternalLink, setUnresolvedInternalLink] = useState(false);
   const documentRef = useRef<ProjectPrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
   const unresolvedRef = useRef<UpdateProjectPrimaryDocumentRequest | null>(null);
+  const unresolvedInternalLinkRef = useRef(false);
   const mutationsBlockedRef = useRef(false);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
@@ -112,6 +114,7 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   draftRef.current = draftBody;
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
+  unresolvedInternalLinkRef.current = unresolvedInternalLink;
   mutationsBlockedRef.current = mutationsBlocked;
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -173,7 +176,7 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   }, []);
 
   const send = useCallback(async (request: UpdateProjectPrimaryDocumentRequest): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); setError(null); setNotice(null);
@@ -216,7 +219,7 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   }, [applySaved, onUnauthorized]);
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     if (unresolvedRef.current) return send(unresolvedRef.current);
     const current = documentRef.current;
@@ -235,7 +238,7 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   saveRef.current = save;
 
   const flush = useCallback(async (): Promise<boolean> => {
-    if (unresolvedRef.current) return false;
+    if (unresolvedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     return saveRef.current();
   }, []);
@@ -247,10 +250,10 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
   }, [onRegisterFlush]);
 
   useEffect(() => {
-    if (!dirty || loading || unresolved || saving || mutationsBlocked || !document) return;
+    if (!dirty || loading || unresolved || unresolvedInternalLink || saving || mutationsBlocked || !document) return;
     const timer = window.setTimeout(() => { void saveRef.current(); }, NOTE_AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, document, loading, mutationsBlocked, saving, unresolved]);
+  }, [dirty, document, loading, mutationsBlocked, saving, unresolved, unresolvedInternalLink]);
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key.toLowerCase() !== "s" || (!event.ctrlKey && !event.metaKey) || event.repeat) return;
@@ -263,9 +266,16 @@ function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized,
         <button type="button" className="secondary" disabled={mutationsBlocked || unresolved} onClick={() => void onOpenFloating()}>フローティングウィンドウで開く</button>
       </div>
       <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked}
-        onChange={(value) => { if (mutationsBlocked || unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
+        documentSessionKey={`project:${candidate.document_id}`}
+        onSearchUnauthorized={onUnauthorized}
+        onUnresolvedInternalLinkChange={(pending) => { unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending); }}
+        onChange={(value, pending = false) => {
+          if (mutationsBlocked || unresolved) return;
+          unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending);
+          setDraftBody(value); draftRef.current = value; setNotice(null);
+        }}
         onKeyDown={handleKeyDown} />
-      <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み"}</span>
+      <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : unresolvedInternalLink ? "内部リンク未確定・保存保留" : saving ? "保存中…" : dirty ? "未保存" : "保存済み"}</span>
         {unresolved && <button type="button" className="notes-inline-retry" aria-label="同じ内容で再試行" disabled={saving} onClick={() => void saveRef.current()}>再試行</button>}
       </p>
       {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
@@ -303,6 +313,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [projectDirty, setProjectDirty] = useState(false);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectUnresolved, setProjectUnresolved] = useState(false);
+  const [unresolvedInternalLink, setUnresolvedInternalLink] = useState(false);
   const [floatingProjectId, setFloatingProjectId] = useState<string | null>(null);
 
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -323,6 +334,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const projectFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const projectDirtyRef = useRef(false);
   const projectUnresolvedRef = useRef(false);
+  const unresolvedInternalLinkRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
   const mutationsBlockedRef = useRef(false);
   const deferredRealtimeRefreshRef = useRef(false);
@@ -342,6 +354,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   showArchivedRef.current = showArchived;
   projectDirtyRef.current = projectDirty;
   projectUnresolvedRef.current = projectUnresolved;
+  unresolvedInternalLinkRef.current = unresolvedInternalLink;
   mutationsBlockedRef.current = mutationsBlocked;
 
   const standaloneDirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
@@ -351,7 +364,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const followUpPending = inFlightDocumentRequest !== null
     && (draftTitle.trim() !== inFlightDocumentRequest.title || draftBody !== inFlightDocumentRequest.markdown_body);
   const pendingSaveCount = unresolved ? 0 : inFlightDocumentRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
-  const saveStatus = unresolved ? "保存結果未確定" : saving ? `保存中 ${pendingSaveCount}件` : dirty ? "未保存" : "保存済み";
+  const saveStatus = unresolved ? "保存結果未確定" : unresolvedInternalLink ? "内部リンク未確定・保存保留" : saving ? `保存中 ${pendingSaveCount}件` : dirty ? "未保存" : "保存済み";
 
   function currentDirty(): boolean {
     return draftRef.current.title !== baselineRef.current.title || draftRef.current.body !== baselineRef.current.body;
@@ -484,7 +497,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   const scheduleAutosave = useCallback(() => {
     if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    if (showArchivedRef.current || modeRef.current !== "existing" || ambiguousRequestRef.current || !currentDirty()) return;
+    if (showArchivedRef.current || modeRef.current !== "existing" || ambiguousRequestRef.current || unresolvedInternalLinkRef.current || !currentDirty()) return;
     debounceRef.current = window.setTimeout(() => { debounceRef.current = null; void saveActionRef.current(); }, NOTE_AUTOSAVE_DEBOUNCE_MS);
   }, []);
 
@@ -549,7 +562,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   useEffect(() => {
     if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "documents"))) return;
-    if (dirty || unresolved || saving || projectSaving || projectUnresolved || mutationsBlocked) {
+    if (dirty || unresolved || unresolvedInternalLink || saving || projectSaving || projectUnresolved || mutationsBlocked) {
       deferredRealtimeRefreshRef.current = true;
       return;
     }
@@ -559,17 +572,17 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         await openCanonicalDocument(selectedIdRef.current, { protectLocalEdits: true });
       }
     });
-  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, realtimeRefresh?.token, refreshList, saving, unresolved]);
+  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, realtimeRefresh?.token, refreshList, saving, unresolved, unresolvedInternalLink]);
 
   useEffect(() => {
-    if (dirty || unresolved || saving || projectSaving || projectUnresolved || mutationsBlocked || !deferredRealtimeRefreshRef.current) return;
+    if (dirty || unresolved || unresolvedInternalLink || saving || projectSaving || projectUnresolved || mutationsBlocked || !deferredRealtimeRefreshRef.current) return;
     deferredRealtimeRefreshRef.current = false;
     void refreshList(showArchivedRef.current).then(async (list) => {
       if (modeRef.current === "existing" && selectedIdRef.current && list?.some((item) => item.document_id === selectedIdRef.current)) {
         await openCanonicalDocument(selectedIdRef.current, { protectLocalEdits: true });
       }
     });
-  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, refreshList, saving, unresolved]);
+  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, refreshList, saving, unresolved, unresolvedInternalLink]);
 
   const reconcileLifecycleProjection = useCallback(async (request: LifecycleRequest, canonical?: StandaloneDocument): Promise<void> => {
     const list = await refreshList(showArchivedRef.current);
@@ -586,7 +599,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [openCanonicalDocument, refreshList, setEditorFromCanonical]);
 
   const sendRequest = useCallback(async (request: DocumentRequest): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     const serialized = serializeJsonRequestBody(request);
     if (serialized.overLimit) {
       setError(`ノートの保存データが大きすぎます（${formatJsonRequestSize(serialized.byteLength)}）。内容を短くしてください。`);
@@ -694,7 +707,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [handleUnauthorized, reconcileLifecycleProjection, scheduleAutosave]);
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const retry = retryRequestRef.current;
     if (ambiguousRequestRef.current && !retry) return false;
@@ -718,6 +731,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       return projectFlushRef.current ? projectFlushRef.current() : !projectDirtyRef.current;
     }
     if (modeRef.current === "empty" || showArchivedRef.current) return true;
+    if (unresolvedInternalLinkRef.current) return false;
     if (ambiguousRequestRef.current) return false;
     if (debounceRef.current !== null) { window.clearTimeout(debounceRef.current); debounceRef.current = null; }
     while (true) {
@@ -736,16 +750,17 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [noteKind, onRegisterFlush]);
 
   useEffect(() => {
-    if (standaloneDirty && mode === "existing" && !unresolved && !showArchived) scheduleAutosave();
+    if (standaloneDirty && mode === "existing" && !unresolved && !unresolvedInternalLink && !showArchived) scheduleAutosave();
     return () => { if (debounceRef.current !== null) { window.clearTimeout(debounceRef.current); debounceRef.current = null; } };
-  }, [mode, scheduleAutosave, showArchived, standaloneDirty, unresolved]);
+  }, [mode, scheduleAutosave, showArchived, standaloneDirty, unresolved, unresolvedInternalLink]);
 
   async function prepareLocalTransition(): Promise<boolean> {
     if (mutationsBlockedRef.current) {
       setError("再認証が必要なため、このNoteを離れられません。");
       return false;
     }
-    if (unresolved || !(await flush())) {
+    if (unresolvedInternalLink || unresolved || !(await flush())) {
+      if (unresolvedInternalLink) setError("内部リンク候補を選択するか、入力中のリンク記号を削除するまで保存・移動できません。");
       if (unresolved) setError("保存結果が未確定のため、元の操作を解決するまで移動できません。");
       return false;
     }
@@ -840,9 +855,11 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setDraftTitle(value); draftRef.current.title = value; setNotice(null);
   }
 
-  function updateDraftBody(value: string): void {
+  function updateDraftBody(value: string, pendingInternalLink = false): void {
     if (mutationsBlockedRef.current || unresolved || showArchived || document?.archived_at) return;
     editorEditGenerationRef.current += 1;
+    unresolvedInternalLinkRef.current = pendingInternalLink;
+    setUnresolvedInternalLink(pendingInternalLink);
     setDraftBody(value); draftRef.current.body = value; setNotice(null);
   }
 
@@ -954,6 +971,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
             <NoteMarkdownEditor
               value={draftBody}
               disabled={unresolved || archivedReadOnly || mutationsBlocked}
+              documentSessionKey={mode === "new" ? "standalone:new" : `standalone:${selectedId ?? "empty"}`}
+              onSearchUnauthorized={onUnauthorized}
+              onUnresolvedInternalLinkChange={(pending) => { unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending); }}
               onChange={updateDraftBody}
               onKeyDown={handleEditorKeyDown}
             />

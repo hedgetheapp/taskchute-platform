@@ -83,6 +83,7 @@ export function TaskNoteEditor({
   const [notice, setNotice] = useState<string | null>(null);
   const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<PrimaryUpdateRequest | null>(null);
+  const [unresolvedInternalLink, setUnresolvedInternalLink] = useState(false);
   const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => initialGeometry
     ?? readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -95,6 +96,7 @@ export function TaskNoteEditor({
   const draftRef = useRef("");
   const baselineRef = useRef("");
   const unresolvedRef = useRef<PrimaryUpdateRequest | null>(null);
+  const unresolvedInternalLinkRef = useRef(false);
   const savingRef = useRef(false);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
@@ -122,6 +124,7 @@ export function TaskNoteEditor({
   draftRef.current = draftBody;
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
+  unresolvedInternalLinkRef.current = unresolvedInternalLink;
   savingRef.current = saving;
   preferredGeometryRef.current = preferredGeometry;
   onDirtyChangeRef.current = onDirtyChange;
@@ -397,7 +400,7 @@ export function TaskNoteEditor({
   }, []);
 
   const send = useCallback(async (request: PrimaryUpdateRequest): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); savingRef.current = true; setError(null); setNotice(null);
@@ -437,7 +440,7 @@ export function TaskNoteEditor({
   }, [applySaved, documentKind, isProjectPrimary, onUnauthorized, primaryLabel]);
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     if (unresolvedRef.current) return send(unresolvedRef.current);
     const current = documentRef.current;
@@ -459,7 +462,7 @@ export function TaskNoteEditor({
   saveRef.current = save;
 
   const flush = useCallback(async (): Promise<boolean> => {
-    if (unresolvedRef.current) return false;
+    if (unresolvedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     return saveRef.current();
   }, []);
@@ -476,10 +479,10 @@ export function TaskNoteEditor({
   }, []);
 
   useEffect(() => {
-    if (!dirty || loading || unresolved || saving || mutationsBlocked || !document) return;
+    if (!dirty || loading || unresolved || unresolvedInternalLink || saving || mutationsBlocked || !document) return;
     const timer = window.setTimeout(() => { void saveRef.current(); }, TASK_NOTE_AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, document, loading, mutationsBlocked, saving, unresolved]);
+  }, [dirty, document, loading, mutationsBlocked, saving, unresolved, unresolvedInternalLink]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -584,10 +587,18 @@ export function TaskNoteEditor({
         <NoteMarkdownEditor
           value={draftBody}
           disabled={unresolved || mutationsBlocked}
-          onChange={(value) => { if (mutationsBlocked || unresolved) return; editGenerationRef.current += 1; setDraftBody(value); draftRef.current = value; setNotice(null); }}
+          documentSessionKey={`${documentKind}:${documentId}`}
+          onSearchUnauthorized={onUnauthorized}
+          onUnresolvedInternalLinkChange={(pending) => { unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending); }}
+          onChange={(value, pending = false) => {
+            if (mutationsBlocked || unresolved) return;
+            unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending);
+            editGenerationRef.current += 1; setDraftBody(value); draftRef.current = value; setNotice(null);
+          }}
           onKeyDown={handleKeyDown}
           className="task-note-markdown-field"
         />
+        {unresolvedInternalLink && <p className="notes-save-status" role="status" aria-live="polite">内部リンク未確定・保存保留</p>}
         {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
         {unresolved && <p className="notes-save-status" role="status" aria-live="polite"><span>保存結果未確定</span>
           <button type="button" className="notes-inline-retry" aria-label="同じ内容で再試行" disabled={saving} onClick={() => void saveRef.current()}>再試行</button>

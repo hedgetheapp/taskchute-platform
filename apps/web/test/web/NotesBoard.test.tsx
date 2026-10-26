@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     deleteStandaloneDocument: vi.fn(),
     loadProjectPrimaryDocumentById: vi.fn(),
     updateProjectPrimaryDocument: vi.fn(),
+    searchInternalDocumentLinks: vi.fn(),
     ApiClientError: MockApiClientError,
   };
 });
@@ -77,6 +78,7 @@ describe("NotesBoard", () => {
     mocks.updateDocument.mockResolvedValue({ document: note("0199d090-0000-7000-8000-000000000001", "notitle", "", 1) });
     mocks.setStandaloneDocumentArchived.mockResolvedValue({ document: note("0199d090-0000-7000-8000-000000000001", "notitle", "", 1, "2026-09-12T00:00:00.000Z") });
     mocks.deleteStandaloneDocument.mockResolvedValue({ document_id: "0199d090-0000-7000-8000-000000000001", deleted: true });
+    mocks.searchInternalDocumentLinks.mockResolvedValue({ candidates: [], next_cursor: null });
   });
 
   it("creates immediately with the reserved notitle request, then explicit Save updates", async () => {
@@ -138,6 +140,54 @@ describe("NotesBoard", () => {
     expect(screen.getByDisplayValue("After")).toBeTruthy();
     await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
     expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ expected_revision: 3, title: "After" });
+  });
+
+  it("keeps an unresolved internal-link trigger dirty and blocks save, autosave, and Note switching", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000002", "Before", "body", 3);
+    const other = note("0199d090-0000-7000-8000-000000000003", "Second", "second", 1);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current), summary(other)] });
+    mocks.loadDocument.mockImplementation(async (id: string) => id === current.document_id ? current : other);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    const body = await screen.findByLabelText("Markdown本文") as HTMLTextAreaElement;
+    body.focus(); body.setSelectionRange(body.value.length, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    expect(body.value).toBe("body[[]]");
+    expect(await screen.findByText("候補がありません。")).toBeTruthy();
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    fireEvent.submit(body.closest("form")!);
+    const loadCount = mocks.loadDocument.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Second" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+    expect(mocks.updateDocument).not.toHaveBeenCalled();
+    expect(mocks.loadDocument).toHaveBeenCalledTimes(loadCount);
+    expect(screen.getByDisplayValue("Before")).toBeTruthy();
+
+    fireEvent.change(body, { target: { value: "body edited" } });
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateDocument.mock.calls[0]![0].markdown_body).toBe("body edited");
+    expect(mocks.updateDocument.mock.calls[0]![0].markdown_body).not.toContain("[[");
+  });
+
+  it("replaces the toolbar marker with a stable Markdown link and saves through the existing revision CAS", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000002", "Before", "body", 3);
+    const candidate = {
+      document_id: "0199d187-0000-7000-8000-000000000001", kind: "standalone", label: "Target",
+      context: null, archived: false, logical_date: null,
+    };
+    const linkedBody = "body[Target](/?view=note&document=0199d187-0000-7000-8000-000000000001)";
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.searchInternalDocumentLinks.mockResolvedValue({ candidates: [candidate], next_cursor: null });
+    mocks.updateDocument.mockResolvedValue({ document: note(current.document_id, "Before", linkedBody, 4) });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    const body = await screen.findByLabelText("Markdown本文") as HTMLTextAreaElement;
+    body.focus(); body.setSelectionRange(body.value.length, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Target/ }));
+    await waitFor(() => expect(body.value).toBe(linkedBody));
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ expected_revision: 3, markdown_body: linkedBody });
+    expect(mocks.updateDocument.mock.calls[0]![0].markdown_body).not.toContain("]]" );
   });
 
   it("keeps text typed while a realtime canonical refresh is still pending", async () => {
@@ -625,6 +675,28 @@ describe("NotesBoard", () => {
     expect(screen.queryByLabelText("Markdown本文")).toBeNull();
     expect(mocks.updateProjectPrimaryDocument.mock.calls[0]![0]).toMatchObject({ project_id: "project-1", document_id: current.document_id,
       expected_revision: 0, markdown_body: "after" });
+  });
+
+  it("holds Project inline save and floating-window transition while its internal-link marker is pending", async () => {
+    const current = projectDocument("0199d103-0000-7000-8000-000000000004", "project-4", "Project Four", "before");
+    const openFloating = vi.fn();
+    mocks.loadDocuments.mockResolvedValue({ documents: [], project_documents: [projectSummary(current)] });
+    mocks.loadProjectPrimaryDocumentById.mockResolvedValue(current);
+    mocks.updateProjectPrimaryDocument.mockResolvedValue({ document: projectDocument(current.document_id, current.project_id, current.project_title, "before edited", 1) });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onOpenProjectNote={openFloating} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Project Four/ }));
+    const body = await screen.findByLabelText("Markdown本文") as HTMLTextAreaElement;
+    body.focus(); body.setSelectionRange(body.value.length, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "フローティングウィンドウで開く" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    expect(mocks.updateProjectPrimaryDocument).not.toHaveBeenCalled();
+    expect(openFloating).not.toHaveBeenCalled();
+
+    fireEvent.change(body, { target: { value: "before edited" } });
+    await waitFor(() => expect(mocks.updateProjectPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateProjectPrimaryDocument.mock.calls[0]![0].markdown_body).toBe("before edited");
   });
 
   it("preserves a dirty Project Primary inline draft and reports an authenticated 401", async () => {

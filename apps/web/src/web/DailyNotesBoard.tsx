@@ -45,11 +45,13 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateDailyPrimaryDocumentRequest | null>(null);
+  const [unresolvedInternalLink, setUnresolvedInternalLink] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const documentRef = useRef<DailyPrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
   const unresolvedRef = useRef<UpdateDailyPrimaryDocumentRequest | null>(null);
+  const unresolvedInternalLinkRef = useRef(false);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
@@ -62,6 +64,7 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
   draftRef.current = draftBody;
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
+  unresolvedInternalLinkRef.current = unresolvedInternalLink;
   mutationsBlockedRef.current = mutationsBlocked;
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -141,7 +144,7 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
   }, [authEpoch, dirty, initialDate, initialRouteValid, loadDate, loadExistingDate, saving, selectedDate, unresolved]);
 
   const send = useCallback(async (request: UpdateDailyPrimaryDocumentRequest): Promise<boolean> => {
-    if (mutationsBlockedRef.current) return false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const serialized = serializeJsonRequestBody(request);
     if (serialized.overLimit) { setError(`デイリーノートの保存データが大きすぎます（${formatJsonRequestSize(serialized.byteLength)}）。`); return false; }
@@ -166,7 +169,7 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
   }, [onUnauthorized]);
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (mutationsBlockedRef.current || inFlightRef.current) return inFlightRef.current ?? false;
+    if (mutationsBlockedRef.current || unresolvedInternalLinkRef.current || inFlightRef.current) return inFlightRef.current ?? false;
     const retry = unresolvedRef.current;
     if (retry) return send(retry);
     const current = documentRef.current;
@@ -176,17 +179,17 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
   saveRef.current = save;
 
   const flush = useCallback(async (): Promise<boolean> => {
-    if (unresolvedRef.current) return false;
+    if (unresolvedRef.current || unresolvedInternalLinkRef.current) return false;
     if (debounceRef.current !== null) { window.clearTimeout(debounceRef.current); debounceRef.current = null; }
     return saveRef.current();
   }, []);
   flushRef.current = flush;
   useEffect(() => { onRegisterFlush?.(() => flushRef.current()); return () => onRegisterFlush?.(null); }, [onRegisterFlush]);
   useEffect(() => {
-    if (!dirty || loading || unresolved || saving || mutationsBlocked || !document) return;
+    if (!dirty || loading || unresolved || unresolvedInternalLink || saving || mutationsBlocked || !document) return;
     debounceRef.current = window.setTimeout(() => { debounceRef.current = null; void saveRef.current(); }, AUTOSAVE_MS);
     return () => { if (debounceRef.current !== null) window.clearTimeout(debounceRef.current); };
-  }, [dirty, document, loading, mutationsBlocked, saving, unresolved]);
+  }, [dirty, document, loading, mutationsBlocked, saving, unresolved, unresolvedInternalLink]);
 
   async function selectDate(date: string): Promise<void> {
     if (date === selectedDate || !(await flush())) return;
@@ -213,8 +216,22 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
       <section className="notes-editor" aria-label="デイリーノートエディタ">
         <div className="notes-editor-heading"><div><p className="eyebrow">Daily Note</p><h2>{selectedDate ?? "デイリーノート"}</h2></div></div>
         {loading ? <p className="muted">読み込み中…</p> : document ? <>
-          <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked} onChange={(value) => { draftRef.current = value; setDraftBody(value); setNotice(null); }} />
-          <p className="notes-save-status" role="status" aria-live="polite">{unresolved ? "保存結果未確定" : saving ? "保存中" : dirty ? "未保存" : "保存済み"}{unresolvedRequest && <button type="button" className="notes-inline-retry" onClick={() => void saveRef.current()} disabled={saving}>再試行</button>}</p>
+          <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked}
+            documentSessionKey={`daily:${document.document_id}`}
+            onSearchUnauthorized={onUnauthorized}
+            onUnresolvedInternalLinkChange={(pending) => { unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending); }}
+            onChange={(value, pending = false) => {
+              if (mutationsBlocked || unresolved) return;
+              unresolvedInternalLinkRef.current = pending; setUnresolvedInternalLink(pending);
+              draftRef.current = value; setDraftBody(value); setNotice(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey) && !event.repeat) {
+                event.preventDefault(); void saveRef.current();
+              }
+            }}
+          />
+          <p className="notes-save-status" role="status" aria-live="polite">{unresolved ? "保存結果未確定" : unresolvedInternalLink ? "内部リンク未確定・保存保留" : saving ? "保存中" : dirty ? "未保存" : "保存済み"}{unresolvedRequest && <button type="button" className="notes-inline-retry" onClick={() => void saveRef.current()} disabled={saving}>再試行</button>}</p>
           {error && <p className="error" role="alert">{error}</p>}
         </> : <p className="muted">{error ?? "デイリーノートを選択してください。"}</p>}
       </section>

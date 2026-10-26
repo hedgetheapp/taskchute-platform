@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     updateTaskPrimaryDocument: vi.fn(),
     loadProjectPrimaryDocumentById: vi.fn(),
     updateProjectPrimaryDocument: vi.fn(),
+    searchInternalDocumentLinks: vi.fn(),
     ApiClientError: MockApiClientError,
   };
 });
@@ -67,6 +68,7 @@ describe("TaskNoteEditor", () => {
     mocks.updateTaskPrimaryDocument.mockResolvedValue({ document: primary("after", 1) });
     mocks.loadProjectPrimaryDocumentById.mockResolvedValue(projectPrimary("before"));
     mocks.updateProjectPrimaryDocument.mockResolvedValue({ document: projectPrimary("after", 1) });
+    mocks.searchInternalDocumentLinks.mockResolvedValue({ candidates: [], next_cursor: null });
   });
 
   function projectPrimary(markdownBody: string, revision = 0): ProjectPrimaryDocument {
@@ -95,6 +97,27 @@ describe("TaskNoteEditor", () => {
       task_id: taskId, document_id: documentId, expected_revision: 0, markdown_body: "after",
     });
     expect(mocks.updateTaskPrimaryDocument.mock.calls[0]![0].operation_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("blocks Task Note autosave, Ctrl+S, and safe flush while an internal-link marker is unresolved", async () => {
+    const registeredFlushRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={(flush) => { registeredFlushRef.current = flush; }}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement;
+    body.focus(); body.setSelectionRange(body.value.length, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    expect(body.value).toBe("before[[]]");
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    expect(await registeredFlushRef.current?.()).toBe(false);
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+
+    fireEvent.change(body, { target: { value: "before edited" } });
+    await waitFor(() => expect(mocks.updateTaskPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateTaskPrimaryDocument.mock.calls[0]![0].markdown_body).toBe("before edited");
   });
 
   it("preserves a dirty Task Primary draft and reports an authenticated 401", async () => {

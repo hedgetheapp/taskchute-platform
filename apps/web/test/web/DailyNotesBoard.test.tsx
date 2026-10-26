@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   loadDailyPrimaryDocumentByDate: vi.fn(),
   ensureDailyPrimaryDocument: vi.fn(),
   updateDailyPrimaryDocument: vi.fn(),
+  searchInternalDocumentLinks: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -66,9 +67,31 @@ beforeEach(() => {
   mocks.loadDailyPrimaryDocumentByDate.mockImplementation(async (logicalDate: string) => logicalDate === "2026-09-23"
     ? document("doc-23", "day-23", logicalDate)
     : document("doc-24", "day-24", logicalDate));
+  mocks.searchInternalDocumentLinks.mockResolvedValue({ candidates: [], next_cursor: null });
 });
 
 describe("DailyNotesBoard corrective UI", () => {
+  it("holds Daily autosave and Ctrl+S until the raw internal-link marker is removed", async () => {
+    const registeredFlushRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    render(<DailyNotesBoard
+      onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onExit={vi.fn()}
+      onRegisterFlush={(flush) => { registeredFlushRef.current = flush; }}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement;
+    body.focus(); body.setSelectionRange(body.value.length, body.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    expect(body.value).toBe("# Daily[[]]");
+    expect(await screen.findByText("内部リンク未確定・保存保留")).toBeTruthy();
+    fireEvent.keyDown(body, { key: "s", metaKey: true });
+    expect(await registeredFlushRef.current?.()).toBe(false);
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    expect(mocks.updateDailyPrimaryDocument).not.toHaveBeenCalled();
+
+    fireEvent.change(body, { target: { value: "# Daily edited" } });
+    await waitFor(() => expect(mocks.updateDailyPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateDailyPrimaryDocument.mock.calls[0]![0].markdown_body).toBe("# Daily edited");
+  });
+
   it("uses the established-day date list and has no editor heading previous/next buttons", async () => {
     render(
       <DailyNotesBoard

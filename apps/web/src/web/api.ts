@@ -353,10 +353,10 @@ export const api = {
   loadDailyPrimaryDocumentByDate(logicalDate: string): Promise<DailyPrimaryDocument> {
     return requestJson(`/api/v1/daily-primary-documents/by-date?logical_date=${encodeURIComponent(logicalDate)}`);
   },
-  searchInternalDocumentLinks(query: string, cursor?: string | null): Promise<InternalDocumentLinkSearchProjection> {
+  searchInternalDocumentLinks(query: string, cursor?: string | null, signal?: AbortSignal): Promise<InternalDocumentLinkSearchProjection> {
     const params = new URLSearchParams({ q: query });
     if (cursor) params.set("cursor", cursor);
-    return requestJson(`/api/v1/documents/search?${params.toString()}`);
+    return requestJson(`/api/v1/documents/search?${params.toString()}`, signal ? { signal } : undefined);
   },
   ensureDailyPrimaryDocument(body: EnsureDailyPrimaryDocumentRequest): Promise<EnsureDailyPrimaryDocumentResult> {
     return requestJson(`/api/v1/taskchute-days/${encodeURIComponent(body.taskchute_day_id)}/daily-primary-document`, jsonPost("", body));
