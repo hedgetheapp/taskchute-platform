@@ -222,7 +222,15 @@ class MarkdownLiveEditorTest {
             TextFieldValue("xOpenAIy\nsecond", selection = TextRange(1, 7)),
         )
 
-        MarkdownToolbarActionId.values().forEach { action ->
+        val oneShotActions = MarkdownToolbarActionId.values().filterNot {
+            it in setOf(
+                MarkdownToolbarActionId.INDENT,
+                MarkdownToolbarActionId.OUTDENT,
+                MarkdownToolbarActionId.MOVE_LINE_UP,
+                MarkdownToolbarActionId.MOVE_LINE_DOWN,
+            )
+        }
+        oneShotActions.forEach { action ->
             beforeStates.forEach { before ->
                 val first = applyMarkdownToolbarAction(before, action, previousEdit = null)
                 assertNotEquals("$action must perform its normal edit once", before, first.value)
@@ -234,6 +242,224 @@ class MarkdownLiveEditorTest {
                 assertEquals("$action restores exact raw source and selection", before, second.value)
                 assertNull(second.reversibleEdit)
             }
+        }
+    }
+
+    @Test
+    fun horizontalRuleAddsOnlyTheNeededLineSeparatorsAndKeepsNewlineStyle() {
+        assertEquals("---", MarkdownEditCommands.horizontalRule("", MarkdownSelection(0, 0)).text)
+        assertEquals("---\nprose", MarkdownEditCommands.horizontalRule("prose", MarkdownSelection(2, 2)).text)
+        assertEquals("first\n---\nsecond", MarkdownEditCommands.horizontalRule("first\nsecond", MarkdownSelection(8, 8)).text)
+        assertEquals("first\r\n---\r\nsecond", MarkdownEditCommands.horizontalRule("first\r\nsecond", MarkdownSelection(8, 8)).text)
+        assertEquals("first\n---\n", MarkdownEditCommands.horizontalRule("first\n", MarkdownSelection(6, 6)).text)
+
+        val preview = MarkdownPreviewTransformation(MarkdownSelection(35, 35))
+            .filter(AnnotatedString("---\nprose -- keep"))
+        assertTrue(preview.text.text.startsWith("────────────────────────────────\n"))
+        assertTrue(preview.text.text.endsWith("prose -- keep"))
+    }
+
+    @Test
+    fun indentAndOutdentAreIncrementalForPlainListTaskAndBlankLines() {
+        var result = MarkdownEditCommands.indent("plain\n- [x] task\n1. ordered\n\n", MarkdownSelection(0, 29))
+        assertEquals("  plain\n  - [x] task\n   1. ordered\n  \n", result.text)
+        repeat(2) { result = MarkdownEditCommands.indent(result.text, result.selection) }
+        assertEquals("      plain\n      - [x] task\n         1. ordered\n      \n", result.text)
+        repeat(3) { result = MarkdownEditCommands.outdent(result.text, result.selection) }
+        assertEquals("plain\n- [x] task\n1. ordered\n\n", result.text)
+
+        val topLevel = MarkdownEditCommands.outdent("plain", MarkdownSelection(2, 2))
+        assertEquals("outdent at level zero is a no-op", "plain", topLevel.text)
+        assertEquals(MarkdownSelection(2, 2), topLevel.selection)
+        val blankLine = MarkdownEditCommands.indent("a\n\nb", MarkdownSelection(2, 2))
+        assertEquals("a\n  \nb", blankLine.text)
+
+        val nested = "1. parent\n   1. child"
+        val nestedCaret = nested.indexOf("1. child")
+        val deeper = MarkdownEditCommands.indent(nested, MarkdownSelection(nestedCaret, nestedCaret))
+        assertEquals("1. parent\n      1. child", deeper.text)
+        assertEquals(nested, MarkdownEditCommands.outdent(deeper.text, deeper.selection).text)
+    }
+
+    @Test
+    fun repeatedToolbarIndentAndOutdentChangeDepthInsteadOfConsumingAnUndoRecord() {
+        val firstAction = applyMarkdownToolbarAction(
+            TextFieldValue("item", selection = TextRange(0)),
+            MarkdownToolbarActionId.BOLD,
+            null,
+        )
+        val firstIndent = applyMarkdownToolbarAction(
+            firstAction.value,
+            MarkdownToolbarActionId.INDENT,
+            firstAction.reversibleEdit,
+        )
+        val secondIndent = applyMarkdownToolbarAction(
+            firstIndent.value,
+            MarkdownToolbarActionId.INDENT,
+            firstIndent.reversibleEdit,
+        )
+        assertEquals("    ****item", secondIndent.value.text)
+        assertFalse(firstIndent.reverted)
+        assertFalse(secondIndent.reverted)
+        assertNull(firstIndent.reversibleEdit)
+        assertNull(secondIndent.reversibleEdit)
+
+        val firstOutdent = applyMarkdownToolbarAction(secondIndent.value, MarkdownToolbarActionId.OUTDENT, null)
+        val secondOutdent = applyMarkdownToolbarAction(firstOutdent.value, MarkdownToolbarActionId.OUTDENT, firstOutdent.reversibleEdit)
+        assertEquals("****item", secondOutdent.value.text)
+        assertFalse(firstOutdent.reverted)
+        assertFalse(secondOutdent.reverted)
+    }
+
+    @Test
+    fun orderedListNumbersSelectedLinesAndTogglesCaretItemWithoutDroppingTaskState() {
+        val source = "- one\n- [x] two\nplain"
+        val selected = MarkdownEditCommands.orderedList(source, MarkdownSelection(0, source.length))
+        assertEquals("1. one\n2. [x] two\n3. plain", selected.text)
+
+        val toggledOff = MarkdownEditCommands.orderedList("  1. [x] done", MarkdownSelection(5, 5))
+        assertEquals("  - [x] done", toggledOff.text)
+        val toggledAgain = MarkdownEditCommands.orderedList(toggledOff.text, MarkdownSelection(5, 5))
+        assertEquals("  1. [x] done", toggledAgain.text)
+    }
+
+    @Test
+    fun movingLinesContinuesAcrossTapsAndPreservesCaretSelectionDirectionAndBoundaryNoOps() {
+        var value = TextFieldValue("a\nb\nc\nd", selection = TextRange(4))
+        repeat(2) {
+            val move = applyMarkdownToolbarAction(value, MarkdownToolbarActionId.MOVE_LINE_UP, null)
+            value = move.value
+        }
+        assertEquals("c\na\nb\nd", value.text)
+        assertEquals(TextRange(0), value.selection)
+
+        repeat(2) {
+            value = applyMarkdownToolbarAction(value, MarkdownToolbarActionId.MOVE_LINE_DOWN, null).value
+        }
+        assertEquals("a\nb\nc\nd", value.text)
+        assertEquals(TextRange(4), value.selection)
+
+        val multi = "one\ntwo\nthree\nfour"
+        val reverse = TextFieldValue(multi, selection = TextRange(multi.indexOf("three") + 5, multi.indexOf("two")))
+        val moved = applyMarkdownToolbarAction(reverse, MarkdownToolbarActionId.MOVE_LINE_DOWN, null).value
+        assertEquals("one\nfour\ntwo\nthree", moved.text)
+        assertTrue("reverse selection direction follows the moved text", moved.selection.start > moved.selection.end)
+        assertEquals(9, moved.selection.start - moved.selection.end)
+
+        val firstLine = TextFieldValue("a\nb", selection = TextRange(0))
+        val noOp = applyMarkdownToolbarAction(firstLine, MarkdownToolbarActionId.MOVE_LINE_UP, null)
+        assertEquals(firstLine, noOp.value)
+        assertNull(noOp.reversibleEdit)
+    }
+
+    @Test
+    fun lineMoveKeepsEmptyLineAndCrLfSeparators() {
+        val blankLine = MarkdownEditCommands.moveLine("a\n\nb", MarkdownSelection(2, 2), MarkdownLineMove.UP)
+        assertEquals("\na\nb", blankLine.text)
+        assertEquals(MarkdownSelection(0, 0), blankLine.selection)
+
+        val crlf = MarkdownEditCommands.moveLine("a\r\nb\r\nc", MarkdownSelection(3, 3), MarkdownLineMove.DOWN)
+        assertEquals("a\r\nc\r\nb", crlf.text)
+    }
+
+    @Test
+    fun lineMoveDoesNotChangeTerminalNewlineWhenTrailingBlankWouldMove() {
+        val source = "a\n\nb"
+        val selection = MarkdownSelection(3, 3)
+
+        val up = MarkdownEditCommands.moveLine(source, selection, MarkdownLineMove.UP)
+        assertEquals(source, up.text)
+        assertEquals(selection, up.selection)
+
+        val sourceWithFinalNewline = "a\n\nb\n"
+        val moved = MarkdownEditCommands.moveLine(sourceWithFinalNewline, MarkdownSelection(3, 3), MarkdownLineMove.UP)
+        assertEquals("a\nb\n\n", moved.text)
+        assertTrue(moved.text.endsWith('\n'))
+    }
+
+    @Test
+    fun underlineMapsCollapsedAndReverseSelectionsAndComposesWithBoldAndLinks() {
+        val collapsed = TextFieldValue("abc", selection = TextRange(1), composition = TextRange(1))
+        val emptySpan = applyMarkdownToolbarAction(collapsed, MarkdownToolbarActionId.UNDERLINE, null)
+        assertEquals("a<u></u>bc", emptySpan.value.text)
+        assertEquals(TextRange(4), emptySpan.value.selection)
+        assertEquals("composition stays between the inserted markers", TextRange(4), emptySpan.value.composition)
+
+        val composingSelection = TextFieldValue("日本", selection = TextRange(0, 2), composition = TextRange(0, 2))
+        val composingUnderline = applyMarkdownToolbarAction(composingSelection, MarkdownToolbarActionId.UNDERLINE, null)
+        assertEquals("<u>日本</u>", composingUnderline.value.text)
+        assertEquals(TextRange(3, 5), composingUnderline.value.composition)
+        assertNull("composition-bearing edits do not capture a revert record", composingUnderline.reversibleEdit)
+
+        val reverse = TextFieldValue("x日本語y", selection = TextRange(4, 1))
+        val wrapped = applyMarkdownToolbarAction(reverse, MarkdownToolbarActionId.UNDERLINE, null)
+        assertEquals("x<u>日本語</u>y", wrapped.value.text)
+        assertEquals(TextRange(7, 4), wrapped.value.selection)
+        val unwrapped = MarkdownEditCommands.underline(wrapped.value.text, MarkdownSelection(4, 7))
+        assertEquals(reverse.text, unwrapped.text)
+        assertEquals(MarkdownSelection(1, 4), unwrapped.selection)
+
+        val inline = MarkdownPreviewTransformation(null).filter(AnnotatedString("<u>**bold** [link](https://example.com)</u>"))
+        assertEquals("bold link", inline.text.text)
+        assertTrue(inline.text.spanStyles.any { it.item.fontWeight?.weight == 700 && it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.Underline })
+        assertTrue(inline.text.spanStyles.any { it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.Underline })
+
+        val nested = MarkdownPreviewTransformation(null).filter(AnnotatedString("**bo<u>ld</u>** [**li<u>nk</u>**](https://example.com)"))
+        assertEquals("bold link", nested.text.text)
+        assertTrue(nested.text.spanStyles.any { it.item.fontWeight?.weight == 700 && it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.Underline })
+        assertTrue(nested.text.spanStyles.any { it.item.fontWeight?.weight == 700 && it.item.color == TaskChuteColors.AccentBlue })
+    }
+
+    @Test
+    fun typedJapaneseTextInvalidatesUnderlineRevertWithoutLosingTheText() {
+        val first = applyMarkdownToolbarAction(TextFieldValue(""), MarkdownToolbarActionId.UNDERLINE, null)
+        val typed = TextFieldValue("<u>あ</u>", selection = TextRange(4))
+        val next = applyMarkdownToolbarAction(typed, MarkdownToolbarActionId.UNDERLINE, first.reversibleEdit)
+        assertFalse(next.reverted)
+        assertEquals("<u>あ</u>", next.value.text)
+    }
+
+    @Test
+    fun malformedOrNestedUnderlineMarkersRemainLiteralAndDoNotStyleOtherSource() {
+        val malformed = listOf(
+            "<u>open",
+            "close</u>",
+            "<u>outer <u>inner</u></u>",
+            "\\<u>escaped</u>",
+            "<u>escaped\\</u>",
+            "<u class='x'>tag</u>",
+            "<script>alert(1)</script>",
+        )
+        malformed.forEach { source ->
+            val preview = MarkdownPreviewTransformation(null).filter(AnnotatedString(source))
+            assertEquals(source, preview.text.text)
+        }
+
+        val source = "<u>valid</u> <u>broken"
+        val preview = MarkdownPreviewTransformation(null).filter(AnnotatedString(source))
+        assertEquals(source, preview.text.text)
+        assertFalse(preview.text.spanStyles.any { it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.Underline })
+    }
+
+    @Test
+    fun underlinePreviewKeepsSourceDisplayOffsetMappingsMonotonic() {
+        val source = "before <u>**日本**</u> [<u>リンク</u>](https://example.com) tail"
+        val transformed = MarkdownPreviewTransformation(null).filter(AnnotatedString(source))
+        assertEquals("before 日本 リンク tail", transformed.text.text)
+
+        var previousDisplay = 0
+        (0..source.length).forEach { sourceOffset ->
+            val displayOffset = transformed.offsetMapping.originalToTransformed(sourceOffset)
+            assertTrue(displayOffset >= previousDisplay)
+            assertTrue(displayOffset in 0..transformed.text.length)
+            previousDisplay = displayOffset
+        }
+        var previousSource = 0
+        (0..transformed.text.length).forEach { displayOffset ->
+            val sourceOffset = transformed.offsetMapping.transformedToOriginal(displayOffset)
+            assertTrue(sourceOffset >= previousSource)
+            assertTrue(sourceOffset in 0..source.length)
+            previousSource = sourceOffset
         }
     }
 

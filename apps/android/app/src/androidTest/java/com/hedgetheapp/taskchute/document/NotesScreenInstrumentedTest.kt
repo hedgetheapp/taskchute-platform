@@ -1,5 +1,6 @@
 package com.hedgetheapp.taskchute.document
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
@@ -7,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -398,9 +400,10 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
-    fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
+    fun markdownImeToolbarScrollsToAllActionsAndPreservesSourceFormatting() {
         val latest = mutableStateOf(TextFieldValue("live", selection = TextRange(0, 4)))
         val headingClicks = AtomicInteger()
+        val toolbarScrollState = ScrollState(0)
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
@@ -408,6 +411,7 @@ class NotesScreenInstrumentedTest {
                     val previousEdit = remember { mutableStateOf<ReversibleMarkdownToolbarEdit?>(null) }
                     MarkdownImeToolbar(
                         modifier = Modifier.fillMaxWidth().height(48.dp),
+                        scrollState = toolbarScrollState,
                         onAction = { action ->
                             val result = applyMarkdownToolbarAction(latest.value, action, previousEdit.value)
                             previousEdit.value = result.reversibleEdit
@@ -427,6 +431,7 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("\u5f15\u7528").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("\u30ea\u30f3\u30af").assertIsDisplayed()
 
+        composeRule.onNodeWithTag("markdown-ime-toolbar").assert(hasScrollAction())
         val actionBounds = listOf("太字", "見出しを選択", "箇条書き", "チェックリスト", "引用", "リンク")
             .map { composeRule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot }
         val pixelsPerDp = composeRule.density.density
@@ -467,6 +472,40 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("リンク").performClick()
         assertEquals("[OpenAI](https://)", latest.value.text)
         assertEquals(TextRange(9, 17), latest.value.selection)
+
+        composeRule.runOnIdle {
+            assertTrue("new controls extend beyond the 360dp viewport", toolbarScrollState.maxValue > 0)
+            toolbarScrollState.dispatchRawDelta(toolbarScrollState.maxValue.toFloat())
+        }
+        composeRule.waitForIdle()
+        listOf("区切り線", "インデント", "インデント解除", "番号付きリスト", "行を上へ", "行を下へ", "下線")
+            .forEach { composeRule.onNodeWithContentDescription(it).assertIsDisplayed() }
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("line", selection = TextRange(0)) }
+        composeRule.onNodeWithContentDescription("区切り線").performClick()
+        assertEquals("---\nline", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("line", selection = TextRange(0)) }
+        composeRule.onNodeWithContentDescription("インデント").performClick()
+        assertEquals("  line", latest.value.text)
+        composeRule.runOnIdle { latest.value = TextFieldValue("  line", selection = TextRange(2)) }
+        composeRule.onNodeWithContentDescription("インデント解除").performClick()
+        assertEquals("line", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("line", selection = TextRange(0)) }
+        composeRule.onNodeWithContentDescription("番号付きリスト").performClick()
+        assertEquals("1. line", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("first\nsecond", selection = TextRange(7)) }
+        composeRule.onNodeWithContentDescription("行を上へ").performClick()
+        assertEquals("second\nfirst", latest.value.text)
+        composeRule.runOnIdle { latest.value = TextFieldValue("first\nsecond", selection = TextRange(0)) }
+        composeRule.onNodeWithContentDescription("行を下へ").performClick()
+        assertEquals("second\nfirst", latest.value.text)
+
+        composeRule.runOnIdle { latest.value = TextFieldValue("underline", selection = TextRange(0, 9)) }
+        composeRule.onNodeWithContentDescription("下線").performClick()
+        assertEquals("<u>underline</u>", latest.value.text)
     }
 
     @Test

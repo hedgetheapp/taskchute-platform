@@ -91,6 +91,16 @@ body focus中にIMEが表示されている場合だけ、約48dpの横スクロ
 
 D-183CのHeading slotは44dp幅・48dp高の`H`ボタンとし、押下でsource/caretを変更せず、底部のcompact pickerに`H1 見出し1`〜`H5 見出し5`を表示する。選択したlevelだけが現在caret行または選択されたsource行へ`#` prefixを適用する。既存のATX H1〜H6はlevel prefixだけを置換し、周囲の本文とselection mappingを維持する。H6はpickerに含めないが、preview render対応は残す。pickerはoutside/Back dismissalで無変更のまま閉じ、IME visibility変化でも開いた状態を保つ。H1〜H5はlevelごとに独立したD-183B可逆action identityを持ち、同一level再選択は編集前のsource/selectionへ戻す。picker再表示とcancelはこのrevert候補を消費しない。
 
+### D-184 Android Markdown editor extensions
+
+既存6操作を先頭に保ったまま、toolbarへhorizontal rule、indent、outdent、ordered list、move up、move down、underlineを追加し、全13 slotを横方向にscrollできるようにする。44dp slot / 48dp touch area、IME直上の位置、focus中のIMEとeditor stateを維持し、第二toolbar rowは設けない。新規buttonは日本語のaccessibility descriptionを持つ。
+
+Horizontal ruleはcaret行の境界へ`---`を挿入し、必要最小限の改行で独立行にする。inactive line previewはstandalone horizontal ruleだけをdivider表示する。Indent / outdentはcaret行またはselectionが触れる各logical lineを一回につき一段だけ変更し、通常行は2 ASCII spaces、list marker付き行はmarker幅を考慮してnestingし、markerと本文を保持する。Ordered listは選択blockを`1. `から連番にし、単一の既存ordered itemは内容を保持したtoggleを行う。automatic Enter numberingは行わない。
+
+Move up / downは対象の一行または連続blockを隣接行を越えて一段移動する。本文・改行形式・selection方向を移動先へ写し、境界ではsource writeを起こさない。末尾の空行移動などでsourceのterminal-newline状態が変わる候補もno-opにする。Indent / outdent / moveの連続tapは各tapで一段ずつ進み、D-183Bの同一action immediate revert対象にはしない。
+
+Underlineは選択範囲をexact `<u>…</u>` source markerで囲み、collapsed selectionではcaretをmarker間へ置く。previewはexactly recognized markersだけにunderline decorationを付ける。malformed、nestedで不安全、attribute付き、その他のHTML-like sourceはliteral表示し、Web側はsource-only textareaのままとする。generic HTML renderingや他clientのsecurity posture変更は行わない。
+
 ## D-134 Android Running Progress Player
 
 current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。

@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -212,6 +214,269 @@ object MarkdownEditCommands {
         }
     }
 
+    fun horizontalRule(source: String, selection: MarkdownSelection): MarkdownEditResult {
+        val lines = sourceLines(source)
+        val caret = selection.end.coerceIn(0, source.length)
+        val lineIndex = lines.indexOfLast { caret >= it.start }.coerceAtLeast(0)
+        val line = lines[lineIndex]
+        val needsTrailingSeparator = line.text.isNotEmpty() || line.lineEnding.isNotEmpty() ||
+            (line.start == source.length && source.endsWith('\n'))
+        val separator = line.lineEnding.takeIf { it.isNotEmpty() }
+            ?: lines.take(lineIndex).lastOrNull { it.lineEnding.isNotEmpty() }?.lineEnding
+            ?: "\n"
+        val inserted = "---" + if (needsTrailingSeparator) separator else ""
+        val text = source.substring(0, line.start) + inserted + source.substring(line.start)
+        fun mapOffset(offset: Int): Int = if (offset >= line.start) offset + inserted.length else offset
+        return MarkdownEditResult(
+            text = text,
+            selection = MarkdownSelection(mapOffset(selection.start), mapOffset(selection.end)),
+            mapOffset = ::mapOffset,
+        )
+    }
+
+    fun indent(source: String, selection: MarkdownSelection): MarkdownEditResult = editSelectedLines(source, selection) { line, _ ->
+        val unit = listIndentUnit(line)
+        LineEdit(" ".repeat(unit) + line, map = { offset -> offset + unit })
+    }
+
+    fun outdent(source: String, selection: MarkdownSelection): MarkdownEditResult = editSelectedLines(source, selection) { line, _ ->
+        val unit = listIndentUnit(line)
+        val leadingSpaces = line.takeWhile { it == ' ' }.length
+        val removed = minOf(unit, leadingSpaces)
+        if (removed == 0) {
+            LineEdit(line, map = { offset -> offset })
+        } else {
+            LineEdit(line.drop(removed), map = { offset -> (offset - removed).coerceAtLeast(0) })
+        }
+    }
+
+    fun orderedList(source: String, selection: MarkdownSelection): MarkdownEditResult {
+        val range = selection.normalized(source.length)
+        val lines = sourceLines(source)
+        val touched = touchedLineIndexes(lines, range)
+        val singleCaretLine = if (range.collapsed) touched.singleOrNull() else null
+        val selectedOrderedLine = singleCaretLine?.let { index ->
+            val line = lines[index].text
+            orderedListPrefix.find(line.substring(leadingWhitespaceLength(line)))
+        }
+        if (selectedOrderedLine != null) {
+            val line = lines[singleCaretLine]
+            val leading = leadingWhitespaceLength(line.text)
+            val contentStart = leading + selectedOrderedLine.range.last + 1
+            val content = line.text.substring(contentStart)
+            val preserveTask = taskCheckboxPrefix.containsMatchIn(content)
+            val newPrefix = if (preserveTask) line.text.substring(0, leading) + "- " else line.text.substring(0, leading)
+            val edit = LineEdit(newPrefix + content, map = { offset ->
+                if (offset <= contentStart) newPrefix.length else newPrefix.length + offset - contentStart
+            })
+            return editSelectedLines(source, selection) { currentLine, index ->
+                if (index == singleCaretLine) edit else LineEdit(currentLine, map = { it })
+            }
+        }
+
+        var number = 0
+        return editSelectedLines(source, selection) { line, index ->
+            if (index !in touched) {
+                LineEdit(line, map = { it })
+            } else {
+                number += 1
+                val leading = leadingWhitespaceLength(line)
+                val bodyStart = listPrefixEnd(line, leading)
+                val body = line.substring(bodyStart)
+                val prefix = line.substring(0, leading) + "$number. "
+                LineEdit(prefix + body, map = { offset ->
+                    if (offset <= bodyStart) prefix.length else prefix.length + offset - bodyStart
+                })
+            }
+        }
+    }
+
+    internal fun moveLine(source: String, selection: MarkdownSelection, direction: MarkdownLineMove): MarkdownEditResult {
+        val lines = sourceLines(source)
+        val touched = touchedLineIndexes(lines, selection.normalized(source.length)).sorted()
+        val first = touched.firstOrNull() ?: return MarkdownEditResult(source, selection)
+        val last = touched.last()
+        val adjacent = when (direction) {
+            MarkdownLineMove.UP -> first - 1
+            MarkdownLineMove.DOWN -> last + 1
+        }
+        if (adjacent !in lines.indices) return MarkdownEditResult(source, selection)
+
+        val order = lines.indices.toMutableList()
+        when (direction) {
+            MarkdownLineMove.UP -> {
+                val block = order.subList(first, last + 1).toList()
+                order.subList(first - 1, last + 1).clear()
+                order.addAll(first - 1, block)
+                order.add(last, first - 1)
+            }
+            MarkdownLineMove.DOWN -> {
+                val after = order[last + 1]
+                order.removeAt(last + 1)
+                order.add(first, after)
+            }
+        }
+
+        val outputStarts = IntArray(lines.size)
+        val oldToNew = IntArray(lines.size)
+        val text = buildString {
+            order.forEachIndexed { outputIndex, originalIndex ->
+                outputStarts[outputIndex] = length
+                oldToNew[originalIndex] = outputIndex
+                append(lines[originalIndex].text)
+                append(lines[outputIndex].lineEnding)
+            }
+        }
+        // A trailing blank line can move to the document end and change whether the raw source
+        // ends in a newline. Preserve the canonical source's terminal-newline state in that case.
+        if (text.endsWith('\n') != source.endsWith('\n')) return MarkdownEditResult(source, selection)
+
+        fun mapOffset(offset: Int): Int {
+            val bounded = offset.coerceIn(0, source.length)
+            val originalIndex = lines.indexOfLast { bounded >= it.start }.coerceAtLeast(0)
+            val originalLine = lines[originalIndex]
+            val local = (bounded - originalLine.start).coerceIn(0, originalLine.text.length)
+            return outputStarts[oldToNew[originalIndex]] + local
+        }
+        return MarkdownEditResult(
+            text,
+            MarkdownSelection(mapOffset(selection.start), mapOffset(selection.end)),
+            ::mapOffset,
+        )
+    }
+
+    fun underline(source: String, selection: MarkdownSelection): MarkdownEditResult {
+        val range = selection.normalized(source.length)
+        val open = "<u>"
+        val close = "</u>"
+        if (range.collapsed) {
+            if (recognizedUnderlineRanges(source).any { range.start in it.first..it.second }) {
+                return MarkdownEditResult(source, selection)
+            }
+            val text = source.substring(0, range.start) + open + close + source.substring(range.start)
+            fun mapOffset(offset: Int): Int = when {
+                offset < range.start -> offset
+                offset == range.start -> range.start + open.length
+                else -> offset + open.length + close.length
+            }
+            val caret = range.start + open.length
+            return MarkdownEditResult(text, MarkdownSelection(caret, caret), ::mapOffset)
+        }
+
+        if (source.substring(range.start, range.end).contains('\n')) return MarkdownEditResult(source, selection)
+
+        val existingUnderline = recognizedUnderlineRanges(source).firstOrNull { (contentStart, contentEnd) ->
+            contentStart == range.start && contentEnd == range.end
+        }
+        if (existingUnderline != null) {
+            val (contentStart, contentEnd) = existingUnderline
+            val text = source.removeRange(contentEnd, contentEnd + close.length).removeRange(contentStart - open.length, contentStart)
+            fun mapOffset(offset: Int): Int = when {
+                offset < contentStart - open.length -> offset
+                offset <= contentStart -> contentStart - open.length
+                offset >= contentEnd + close.length -> offset - open.length - close.length
+                else -> (offset - open.length).coerceIn(contentStart - open.length, contentEnd - open.length)
+            }
+            val unwrappedStart = contentStart - open.length
+            val unwrappedEnd = contentEnd - open.length
+            return MarkdownEditResult(
+                text,
+                if (selection.start > selection.end) MarkdownSelection(unwrappedEnd, unwrappedStart)
+                else MarkdownSelection(unwrappedStart, unwrappedEnd),
+                ::mapOffset,
+            )
+        }
+
+        val selectedText = source.substring(range.start, range.end)
+        if (selectedText.contains(open) || selectedText.contains(close) ||
+            recognizedUnderlineRanges(source).any { (contentStart, contentEnd) -> range.start in contentStart..contentEnd || range.end in contentStart..contentEnd }
+        ) {
+            return MarkdownEditResult(source, selection)
+        }
+        val text = source.substring(0, range.start) + open + selectedText + close + source.substring(range.end)
+        val selectedStart = range.start + open.length
+        val selectedEnd = range.end + open.length
+        return MarkdownEditResult(
+            text,
+            if (selection.start > selection.end) MarkdownSelection(selectedEnd, selectedStart)
+            else MarkdownSelection(selectedStart, selectedEnd),
+        ) { offset ->
+            when {
+                offset < range.start -> offset
+                offset <= range.end -> offset + open.length
+                else -> offset + open.length + close.length
+            }
+        }
+    }
+
+    private fun editSelectedLines(
+        source: String,
+        selection: MarkdownSelection,
+        transform: (line: String, lineIndex: Int) -> LineEdit,
+    ): MarkdownEditResult {
+        val lines = sourceLines(source)
+        val touched = touchedLineIndexes(lines, selection.normalized(source.length))
+        val edits = lines.mapIndexed { index, line ->
+            if (index in touched) transform(line.text, index) else LineEdit(line.text, map = { it })
+        }
+        return buildLineEditResult(source, selection, lines, edits)
+    }
+
+    private fun listIndentUnit(line: String): Int {
+        val leading = leadingWhitespaceLength(line)
+        val body = line.substring(leading)
+        val ordered = orderedListPrefix.find(body)
+        if (ordered != null) return ordered.groupValues[1].length + 1
+        if (bulletListPrefix.containsMatchIn(body)) return 2
+        return 2
+    }
+
+    private fun leadingWhitespaceLength(line: String): Int = line.takeWhile { it == ' ' || it == '\t' }.length
+
+    private fun listPrefixEnd(line: String, leadingLength: Int): Int {
+        val body = line.substring(leadingLength)
+        val prefix = orderedListPrefix.find(body) ?: bulletListPrefix.find(body)
+        return leadingLength + (prefix?.range?.last?.plus(1) ?: 0)
+    }
+
+    private val orderedListPrefix = Regex("^(\\d{1,9}[.)])[ \\t]+")
+    private val bulletListPrefix = Regex("^[-+*][ \\t]+")
+    private val taskCheckboxPrefix = Regex("^\\[([ xX])\\][ \\t]+")
+
+    internal fun recognizedUnderlineRanges(source: String): List<Pair<Int, Int>> {
+        val open = "<u>"
+        val close = "</u>"
+        val ranges = mutableListOf<Pair<Int, Int>>()
+        var cursor = 0
+        while (cursor < source.length) {
+            val nextOpen = nextUnescapedMarker(source, open, cursor)
+            val nextClose = nextUnescapedMarker(source, close, cursor)
+            if (nextOpen < 0 && nextClose < 0) break
+            if (nextClose >= 0 && (nextOpen < 0 || nextClose < nextOpen)) return emptyList()
+            val closeIndex = nextUnescapedMarker(source, close, nextOpen + open.length)
+            val nestedOpen = nextUnescapedMarker(source, open, nextOpen + open.length)
+            if (closeIndex < 0 || (nestedOpen >= 0 && nestedOpen < closeIndex)) return emptyList()
+            ranges += (nextOpen + open.length) to closeIndex
+            cursor = closeIndex + close.length
+        }
+        return ranges
+    }
+
+    private fun nextUnescapedMarker(source: String, marker: String, fromIndex: Int): Int {
+        var index = source.indexOf(marker, fromIndex)
+        while (index >= 0) {
+            var precedingBackslashes = 0
+            var preceding = index - 1
+            while (preceding >= 0 && source[preceding] == '\\') {
+                precedingBackslashes += 1
+                preceding -= 1
+            }
+            if (precedingBackslashes % 2 == 0) return index
+            index = source.indexOf(marker, index + marker.length)
+        }
+        return -1
+    }
+
     private fun editLines(
         source: String,
         selection: MarkdownSelection,
@@ -225,25 +490,39 @@ object MarkdownEditCommands {
         val edits = lines.mapIndexed { index, line ->
             if (index in touched) transform(line.text, allHavePrefix) else LineEdit(line.text, map = { offset -> offset })
         }
+        return buildLineEditResult(source, selection, lines, edits)
+    }
+
+    private fun buildLineEditResult(
+        source: String,
+        selection: MarkdownSelection,
+        lines: List<SourceLine>,
+        edits: List<LineEdit>,
+    ): MarkdownEditResult {
         val text = buildString {
             edits.forEachIndexed { index, edit ->
                 append(edit.text)
-                if (lines[index].hasNewline) append('\n')
+                append(lines[index].lineEnding)
             }
         }
         val starts = IntArray(lines.size)
         var outputStart = 0
         edits.forEachIndexed { index, edit ->
             starts[index] = outputStart
-            outputStart += edit.text.length + if (lines[index].hasNewline) 1 else 0
+            outputStart += edit.text.length + lines[index].lineEnding.length
         }
         fun mapPosition(position: Int): Int {
-            val lineIndex = lines.indexOfLast { position >= it.start }.coerceAtLeast(0)
+            val bounded = position.coerceIn(0, source.length)
+            val lineIndex = lines.indexOfLast { bounded >= it.start }.coerceAtLeast(0)
             val line = lines[lineIndex]
-            val local = (position - line.start).coerceIn(0, line.text.length)
+            val local = (bounded - line.start).coerceIn(0, line.text.length)
             return starts[lineIndex] + edits[lineIndex].map(local)
         }
-        return MarkdownEditResult(text, MarkdownSelection(mapPosition(range.start), mapPosition(range.end)), ::mapPosition)
+        return MarkdownEditResult(
+            text,
+            MarkdownSelection(mapPosition(selection.start), mapPosition(selection.end)),
+            ::mapPosition,
+        )
     }
 
 }
@@ -259,7 +538,16 @@ internal enum class MarkdownToolbarActionId {
     CHECKBOX,
     QUOTE,
     LINK,
+    HORIZONTAL_RULE,
+    INDENT,
+    OUTDENT,
+    ORDERED_LIST,
+    MOVE_LINE_UP,
+    MOVE_LINE_DOWN,
+    UNDERLINE,
 }
+
+internal enum class MarkdownLineMove { UP, DOWN }
 
 internal enum class MarkdownHeadingLevel(
     val level: Int,
@@ -306,7 +594,13 @@ internal fun applyMarkdownToolbarAction(
     action: MarkdownToolbarActionId,
     previousEdit: ReversibleMarkdownToolbarEdit?,
 ): MarkdownToolbarActionResult {
-    if (previousEdit?.action == action && current == previousEdit.after) {
+    val incrementalAction = action in setOf(
+        MarkdownToolbarActionId.INDENT,
+        MarkdownToolbarActionId.OUTDENT,
+        MarkdownToolbarActionId.MOVE_LINE_UP,
+        MarkdownToolbarActionId.MOVE_LINE_DOWN,
+    )
+    if (!incrementalAction && previousEdit?.action == action && current == previousEdit.after) {
         return MarkdownToolbarActionResult(
             value = previousEdit.before,
             reversibleEdit = null,
@@ -326,6 +620,13 @@ internal fun applyMarkdownToolbarAction(
         MarkdownToolbarActionId.CHECKBOX -> MarkdownEditCommands.checkbox(current.text, range)
         MarkdownToolbarActionId.QUOTE -> MarkdownEditCommands.quote(current.text, range)
         MarkdownToolbarActionId.LINK -> MarkdownEditCommands.link(current.text, range)
+        MarkdownToolbarActionId.HORIZONTAL_RULE -> MarkdownEditCommands.horizontalRule(current.text, range)
+        MarkdownToolbarActionId.INDENT -> MarkdownEditCommands.indent(current.text, range)
+        MarkdownToolbarActionId.OUTDENT -> MarkdownEditCommands.outdent(current.text, range)
+        MarkdownToolbarActionId.ORDERED_LIST -> MarkdownEditCommands.orderedList(current.text, range)
+        MarkdownToolbarActionId.MOVE_LINE_UP -> MarkdownEditCommands.moveLine(current.text, range, MarkdownLineMove.UP)
+        MarkdownToolbarActionId.MOVE_LINE_DOWN -> MarkdownEditCommands.moveLine(current.text, range, MarkdownLineMove.DOWN)
+        MarkdownToolbarActionId.UNDERLINE -> MarkdownEditCommands.underline(current.text, range)
     }
     val composition = current.composition?.let {
         TextRange(edit.mapOffset(it.start), edit.mapOffset(it.end))
@@ -335,7 +636,7 @@ internal fun applyMarkdownToolbarAction(
         selection = TextRange(edit.selection.start, edit.selection.end),
         composition = composition,
     )
-    val reversibleEdit = if (current.composition == null && next.composition == null && next != current) {
+    val reversibleEdit = if (!incrementalAction && current.composition == null && next.composition == null && next != current) {
         ReversibleMarkdownToolbarEdit(action = action, before = current, after = next)
     } else {
         null
@@ -345,21 +646,24 @@ internal fun applyMarkdownToolbarAction(
 
 private data class LineEdit(val text: String, val map: (Int) -> Int)
 
-private data class SourceLine(val start: Int, val end: Int, val text: String, val hasNewline: Boolean)
+private data class SourceLine(val start: Int, val end: Int, val text: String, val lineEnding: String) {
+    val hasNewline: Boolean get() = lineEnding.isNotEmpty()
+}
 
 private fun sourceLines(source: String): List<SourceLine> {
-    if (source.isEmpty()) return listOf(SourceLine(0, 0, "", false))
+    if (source.isEmpty()) return listOf(SourceLine(0, 0, "", ""))
     val result = mutableListOf<SourceLine>()
     var start = 0
     while (start <= source.length) {
         val newline = source.indexOf('\n', start)
         if (newline < 0) {
-            result += SourceLine(start, source.length, source.substring(start), false)
+            result += SourceLine(start, source.length, source.substring(start), "")
             break
         }
-        result += SourceLine(start, newline, source.substring(start, newline), true)
+        val lineEnd = if (newline > start && source[newline - 1] == '\r') newline - 1 else newline
+        result += SourceLine(start, lineEnd, source.substring(start, lineEnd), source.substring(lineEnd, newline + 1))
         start = newline + 1
-        if (start == source.length) result += SourceLine(start, start, "", false)
+        if (start == source.length) result += SourceLine(start, start, "", "")
     }
     return result
 }
@@ -396,7 +700,7 @@ internal class MarkdownPreviewTransformation(private val activeSelection: Markdo
             } else {
                 appendRenderedLine(builder, source, line)
             }
-            if (line.hasNewline) builder.append(line.end, line.end + 1, "\n")
+            if (line.hasNewline) builder.append(line.end, line.end + line.lineEnding.length, line.lineEnding)
         }
         return TransformedText(
             builder.build(),
@@ -410,6 +714,16 @@ internal class MarkdownPreviewTransformation(private val activeSelection: Markdo
 
 private fun appendRenderedLine(builder: PreviewBuilder, source: String, line: SourceLine) {
     val text = line.text
+    val thematicBreak = Regex("^ {0,3}(?:(?:\\*\\s*){3,}|(?:-\\s*){3,}|(?:_\\s*){3,})$")
+    if (thematicBreak.matches(text)) {
+        builder.append(
+            line.start,
+            line.end,
+            "────────────────────────────────",
+            SpanStyle(color = TaskChuteColors.SecondaryText, fontSize = 12.sp, letterSpacing = 1.sp),
+        )
+        return
+    }
     val heading = Regex("^(#{1,6})(\\s+)(.*)$").matchEntire(text)
     if (heading != null) {
         val prefixLength = heading.groupValues[1].length + heading.groupValues[2].length
@@ -430,65 +744,156 @@ private fun appendRenderedLine(builder: PreviewBuilder, source: String, line: So
         builder.append(line.start + prefixLength, line.end, quote.groupValues[2], SpanStyle(fontStyle = FontStyle.Italic, color = TaskChuteColors.SecondaryText))
         return
     }
-    val task = Regex("^- \\[([ xX])\\] (.*)$").matchEntire(text)
+    val leading = leadingMarkdownIndent(text)
+    val bodyStart = line.start + leading.length
+    if (leading.isNotEmpty()) builder.append(line.start, bodyStart, leading)
+    val body = text.substring(leading.length)
+    val ordered = Regex("^(\\d{1,9}[.)][ \\t]+)(.*)$").matchEntire(body)
+    if (ordered != null) {
+        val prefixLength = ordered.groupValues[1].length
+        val contentStart = bodyStart + prefixLength
+        builder.append(bodyStart, contentStart, ordered.groupValues[1], SpanStyle(color = TaskChuteColors.SecondaryText))
+        val task = Regex("^\\[([ xX])\\][ \\t]+").find(source.substring(contentStart, line.end))
+        if (task != null) {
+            val marker = if (task.groupValues[1].equals("x", ignoreCase = true)) "☑ " else "☐ "
+            builder.append(contentStart, contentStart + task.value.length, marker, SpanStyle(color = Color.White))
+            appendInline(builder, source, contentStart + task.value.length, line.end)
+        } else {
+            appendInline(builder, source, contentStart, line.end)
+        }
+        return
+    }
+    val task = Regex("^- \\[([ xX])\\] (.*)$").matchEntire(body)
     if (task != null) {
         val prefixLength = 6
         val marker = if (task.groupValues[1].equals("x", ignoreCase = true)) "☑ " else "☐ "
-        builder.append(line.start, line.start + prefixLength, marker, SpanStyle(color = Color.White))
-        appendInline(builder, source, line.start + prefixLength, line.end)
+        builder.append(bodyStart, bodyStart + prefixLength, marker, SpanStyle(color = Color.White))
+        appendInline(builder, source, bodyStart + prefixLength, line.end)
         return
     }
-    val bullet = Regex("^- (.*)$").matchEntire(text)
+    val bullet = Regex("^[-+*] (.*)$").matchEntire(body)
     if (bullet != null) {
-        builder.append(line.start, line.start + 2, "• ", SpanStyle(color = TaskChuteColors.SecondaryText))
-        appendInline(builder, source, line.start + 2, line.end)
+        builder.append(bodyStart, bodyStart + 2, "• ", SpanStyle(color = TaskChuteColors.SecondaryText))
+        appendInline(builder, source, bodyStart + 2, line.end)
         return
     }
-    appendInline(builder, source, line.start, line.end)
+    appendInline(builder, source, bodyStart, line.end)
 }
 
-private fun appendInline(builder: PreviewBuilder, source: String, start: Int, end: Int) {
-    val pattern = Regex("\\*\\*(.+?)\\*\\*|\\[([^\\]]+)\\]\\(([^)]+)\\)")
+private fun leadingMarkdownIndent(source: String): String = source.takeWhile { it == ' ' || it == '\t' }
+
+private fun appendInline(
+    builder: PreviewBuilder,
+    source: String,
+    start: Int,
+    end: Int,
+    baseStyle: SpanStyle? = null,
+) {
+    val underlineOpen = "<u>"
+    val underlineClose = "</u>"
+    val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
+    val linkPattern = Regex("\\[([^\\]]+)\\]\\(([^)]+)\\)")
     var cursor = start
-    pattern.findAll(source.substring(start, end)).forEach { match ->
-        val matchStart = start + match.range.first
-        val matchEnd = start + match.range.last + 1
-        if (matchStart > cursor) appendTextWithInteractiveLinks(builder, source, cursor, matchStart)
-        if (match.groupValues[1].isNotEmpty()) {
-            builder.append(matchStart, matchStart + 2, "")
-            val contentStart = matchStart + 2
-            val contentEnd = matchEnd - 2
-            builder.append(contentStart, contentEnd, source.substring(contentStart, contentEnd), SpanStyle(fontWeight = FontWeight.Bold))
-            builder.append(contentEnd, matchEnd, "")
-        } else {
-            val label = match.groupValues[2]
-            val labelStart = matchStart + 1
-            val labelEnd = labelStart + label.length
-            builder.append(matchStart, labelStart, "")
-            builder.append(labelStart, labelEnd, label, SpanStyle(color = TaskChuteColors.AccentBlue, textDecoration = TextDecoration.Underline))
-            builder.append(labelEnd, matchEnd, "")
+    while (cursor < end) {
+        val remaining = source.substring(cursor, end)
+        val underline = MarkdownEditCommands.recognizedUnderlineRanges(remaining).firstOrNull()
+        val bold = boldPattern.find(remaining)
+        val link = linkPattern.find(remaining)
+        val underlineStart = underline?.first?.minus(underlineOpen.length)
+        val boldStart = bold?.range?.first
+        val linkStart = link?.range?.first
+        val nextStart = listOfNotNull(underlineStart, boldStart, linkStart).minOrNull()
+        if (nextStart == null) {
+            appendTextWithInteractiveLinks(builder, source, cursor, end, baseStyle)
+            return
         }
-        cursor = matchEnd
+        val absoluteStart = cursor + nextStart
+        if (absoluteStart > cursor) appendTextWithInteractiveLinks(builder, source, cursor, absoluteStart, baseStyle)
+
+        when (nextStart) {
+            underlineStart -> {
+                val (contentStartOffset, contentEndOffset) = requireNotNull(underline)
+                val openStart = cursor + contentStartOffset - underlineOpen.length
+                val contentStart = cursor + contentStartOffset
+                val contentEnd = cursor + contentEndOffset
+                val closeEnd = contentEnd + underlineClose.length
+                builder.append(openStart, contentStart, "")
+                appendInline(
+                    builder,
+                    source,
+                    contentStart,
+                    contentEnd,
+                    mergePreviewStyle(baseStyle, SpanStyle(textDecoration = TextDecoration.Underline)),
+                )
+                builder.append(contentEnd, closeEnd, "")
+                cursor = closeEnd
+            }
+            boldStart -> {
+                val match = requireNotNull(bold)
+                val matchStart = cursor + match.range.first
+                val matchEnd = cursor + match.range.last + 1
+                val contentStart = matchStart + 2
+                val contentEnd = matchEnd - 2
+                builder.append(matchStart, contentStart, "")
+                appendInline(
+                    builder,
+                    source,
+                    contentStart,
+                    contentEnd,
+                    mergePreviewStyle(baseStyle, SpanStyle(fontWeight = FontWeight.Bold)),
+                )
+                builder.append(contentEnd, matchEnd, "")
+                cursor = matchEnd
+            }
+            else -> {
+                val match = requireNotNull(link)
+                val matchStart = cursor + match.range.first
+                val matchEnd = cursor + match.range.last + 1
+                val labelStart = matchStart + 1
+                val labelEnd = labelStart + match.groupValues[1].length
+                builder.append(matchStart, labelStart, "")
+                appendInline(
+                    builder,
+                    source,
+                    labelStart,
+                    labelEnd,
+                    mergePreviewStyle(
+                        baseStyle,
+                        SpanStyle(color = TaskChuteColors.AccentBlue, textDecoration = TextDecoration.Underline),
+                    ),
+                )
+                builder.append(labelEnd, matchEnd, "")
+                cursor = matchEnd
+            }
+        }
     }
-    if (cursor < end) appendTextWithInteractiveLinks(builder, source, cursor, end)
 }
 
-private fun appendTextWithInteractiveLinks(builder: PreviewBuilder, source: String, start: Int, end: Int) {
+private fun mergePreviewStyle(baseStyle: SpanStyle?, addedStyle: SpanStyle): SpanStyle =
+    baseStyle?.merge(addedStyle) ?: addedStyle
+
+private fun appendTextWithInteractiveLinks(
+    builder: PreviewBuilder,
+    source: String,
+    start: Int,
+    end: Int,
+    baseStyle: SpanStyle? = null,
+) {
     val links = markdownLinkSourceRanges(source).filter {
         it.sourceStart >= start && it.sourceEndExclusive <= end
     }
     var cursor = start
     links.forEach { link ->
-        if (link.sourceStart > cursor) builder.append(cursor, link.sourceStart, source.substring(cursor, link.sourceStart))
+        if (link.sourceStart > cursor) builder.append(cursor, link.sourceStart, source.substring(cursor, link.sourceStart), baseStyle)
         builder.append(
             link.sourceStart,
             link.sourceEndExclusive,
             source.substring(link.sourceStart, link.sourceEndExclusive),
-            SpanStyle(color = TaskChuteColors.AccentBlue, textDecoration = TextDecoration.Underline),
+            mergePreviewStyle(baseStyle, SpanStyle(color = TaskChuteColors.AccentBlue, textDecoration = TextDecoration.Underline)),
         )
         cursor = link.sourceEndExclusive
     }
-    if (cursor < end) builder.append(cursor, end, source.substring(cursor, end))
+    if (cursor < end) builder.append(cursor, end, source.substring(cursor, end), baseStyle)
 }
 
 private class PreviewBuilder(private val source: String) {
@@ -556,6 +961,7 @@ fun MarkdownLiveEditor(
     val lineNumberPreferences = remember(context) { MarkdownEditorPreferences(context) }
     val showLineNumbers = remember(context) { lineNumberPreferences.showLineNumbers() }
     val editorScrollState = remember(editorSessionKey) { ScrollState(0) }
+    val toolbarScrollState = remember(editorSessionKey) { ScrollState(0) }
     val currentCursorDocumentId = rememberUpdatedState(cursorDocumentId)
     val currentTextFieldValueChange = rememberUpdatedState(onTextFieldValueChange)
     // Notes keep this key stable when an unmaterialized editor adopts its canonical document ID.
@@ -925,15 +1331,19 @@ fun MarkdownLiveEditor(
         if (toolbarVisible) {
             MarkdownImeToolbar(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp).testTag("markdown-ime-toolbar"),
+                scrollState = toolbarScrollState,
                 onAction = { action ->
+                    val previousValue = fieldValue
                     val result = applyMarkdownToolbarAction(fieldValue, action, reversibleToolbarEdit)
                     reversibleToolbarEdit = result.reversibleEdit
                     selectionRestoreAfterTap = null
                     fieldValue = result.value
-                    onValueChange(result.value.text)
-                    onTextFieldValueObserved(result.value)
-                    focusRequester.requestFocus()
-                    keyboardController?.show()
+                    if (result.value.text != previousValue.text) onValueChange(result.value.text)
+                    if (result.value != previousValue) {
+                        onTextFieldValueObserved(result.value)
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
                 },
                 onHeadingClick = {
                     headingPickerSnapshot = MarkdownHeadingPickerSnapshot(editorSessionKey, value, fieldValue)
@@ -1096,11 +1506,12 @@ private fun visibleMarkdownLineNumberPlacements(
 @Composable
 internal fun MarkdownImeToolbar(
     modifier: Modifier,
+    scrollState: ScrollState = rememberScrollState(),
     onAction: (MarkdownToolbarActionId) -> Unit,
     onHeadingClick: () -> Unit,
 ) {
     Row(
-        modifier = modifier.padding(horizontal = 4.dp),
+        modifier = modifier.horizontalScroll(scrollState).padding(horizontal = 4.dp).testTag("markdown-ime-toolbar"),
         horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1119,6 +1530,27 @@ internal fun MarkdownImeToolbar(
         }
         MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.LINK)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_horizontal_rule_24, "区切り線", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.HORIZONTAL_RULE)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_format_indent_increase_24, "インデント", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.INDENT)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_format_indent_decrease_24, "インデント解除", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.OUTDENT)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_format_list_numbered_24, "番号付きリスト", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.ORDERED_LIST)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_move_line_up_24, "行を上へ", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.MOVE_LINE_UP)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_move_line_down_24, "行を下へ", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.MOVE_LINE_DOWN)
+        }
+        MarkdownToolbarAction(R.drawable.ic_material_format_underlined_24, "下線", modifier = Modifier.width(44.dp)) {
+            onAction(MarkdownToolbarActionId.UNDERLINE)
         }
     }
 }

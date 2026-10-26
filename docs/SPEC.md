@@ -258,6 +258,14 @@ Android Notesのstandalone editorとToday Task Primary Noteは同一のlive-prev
 
 bodyがfocusを持ちIMEが表示されている間だけ、IME直上にBold、Heading、Bulleted list、Checkbox、Quote、Linkの6操作toolbarを表示する。各commandはlocal sourceとselection/caretを更新するだけで、saveやDocument authorityを直接変更しない。TextFieldValueとsource/display offset mappingはUI presentationに限定し、D-111のautosave、CAS、conflict、ambiguous retry、safe flush、discard、archive、restore、hard-delete semanticsを維持する。第三者Markdown dependency、Worker/API、schema、migration、offline persistence、Web changeは追加しない。
 
+### D-184 Android Markdown editor extensions
+
+D-184は共有Android editorのcommand toolbarを既存6操作のまま横スクロール可能に拡張し、horizontal rule、indent / outdent、ordered list、line up / down、underlineを追加する。既存の44dp slot、48dp touch area、Heading picker、raw Markdown source authority、selection / composition / focus、D-111 persistence semanticsを保つ。追加actionはstandalone Note、Task Primary Note、Project Primary Note、Daily Noteの共通editorに適用する。
+
+Horizontal ruleは`---`だけの独立source行として挿入し、非active previewでも独立行と認識できる場合だけdividerとして表示する。Indent / outdentは対象logical lineごとに1段ずつ操作し、list / task markerと本文を保持する。Ordered listは選択された行をsource順に`1. `から連番化し、単一行では既存markerを内容を失わずtoggleできる。Enter時の自動採番や別listのglobal renumberは追加しない。
+
+Line up / downはcaret行または連続選択行を隣接logical lineの向こうへ1段ずつ移し、境界ではno-opとする。LF / CRLF separator、全行のsource、selection direction、末尾改行の有無を保持する。移動candidateが末尾改行の有無を変える場合はsourceとselectionを変更しない。Underlineはexact `<u>…</u>` pairだけをsource representationとして認識し、Android previewでも許可したexact pairだけをunderline decorationにする。malformed / unsupported HTML-like sourceはliteralのまま保持し、generic HTML parserやWeb previewを導入しない。Webのsource-only textareaではこのmarkupはliteral sourceとして表示される。
+
 ## D-112 Android Today bulk selection and day operations
 
 D-112では、current established Dayのordinary planned Entryに限り、常時表示のselection

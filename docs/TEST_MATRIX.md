@@ -1,3 +1,13 @@
+## D-184 Android Markdown editor extensions — 2026-10-26
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D184-COMMANDS | Shared Android Markdown editor | Extend the toolbar with horizontal rule, repeated indent/outdent, ordered list, move up/down and underline while preserving raw source, selection, composition, D-183B and D-111 behavior | `MarkdownLiveEditorTest` `46 / 46 PASS`: source transforms, blank/trailing lines, LF/CRLF, selection direction, repeated incremental commands, ordered/task markers, exact underline whitelist and malformed HTML-like literal handling. Terminal-newline-changing line move is explicitly a no-op. | PASS / JVM |
+| D184-TOOLBAR | Notes / shared toolbar | Reach all 13 actions at 360dp portrait / fontScale 1.3; preserve raw Markdown and accessible controls with synthetic IME insets | Final-source API 33 `markdownImeToolbarScrollsToAllActionsAndPreservesSourceFormatting` `1 / 1 PASS`. Targeted `markdownEditorToolbarDoubleTapRevertsBoldHeadingAndLink` `1 / 1 PASS` on final source. Task Note sheet and Daily blank-tap/IME targeted tests passed during this implementation. Initial full Notes class run was `18 / 19`; the revert case passed individually but the class is not claimed as fully passing. | PASS / FOCUSED; CLASS PARTIAL |
+| D184-LOCAL-BUILD | Android build | Compile app and AndroidTest sources; assemble Phone debug APK | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug` PASS on final source. | PASS / LOCAL |
+| D184-CI-APK | Exact source SHA / signed Phone APK | Exact-SHA Android CI and inspect the matching nonprod Phone APK | PENDING exact implementation commit. | PENDING |
+| D184-BOUNDARY | Other surfaces / device / production / release | Keep canonical raw source; no broad HTML or cross-client rendering change; distinguish automated and physical-device evidence | Web editor checked as source-only textarea; literal `<u>` display is expected. Actual OS IME NOT_VERIFIED; Galaxy S23 NOT_RUN; Product Verified NO; Production NOT_RUN; Released NO. No API, Worker, DB/schema/migration, Web/Wear source, dependency or production change. | PASS / NOT_RUN |
+
 ## D-183C Android Markdown heading picker — 2026-10-26
 
 | ID | Area | Requirement | Evidence | Status |
