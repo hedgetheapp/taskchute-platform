@@ -145,6 +145,8 @@ export function NoteMarkdownEditor({
   const selectionSnapshotRef = useRef<MarkdownSelection>({ start: 0, end: 0, direction: "none" });
   const composingRef = useRef(false);
   const sessionKeyRef = useRef(documentSessionKey);
+  const propValueRef = useRef(value);
+  const awaitingParentValueRef = useRef<string | null>(null);
   const programmaticTextRef = useRef<string | null>(null);
   const searchGenerationRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -163,8 +165,27 @@ export function NoteMarkdownEditor({
 
   useEffect(() => {
     const changedSession = sessionKeyRef.current !== documentSessionKey;
-    const externallyReplaced = sourceRef.current !== value;
-    if (!changedSession && !externallyReplaced) return;
+    if (changedSession) {
+      sessionKeyRef.current = documentSessionKey;
+      propValueRef.current = value;
+      awaitingParentValueRef.current = null;
+      sourceRef.current = value;
+      pendingStartRef.current = null;
+      setPendingLink(false);
+      setCurrentToken(null);
+      setDismissedTokenKey(null);
+      setSearchState(null);
+      onUnresolvedInternalLinkChange?.(false);
+      return;
+    }
+    if (awaitingParentValueRef.current === value) {
+      propValueRef.current = value;
+      awaitingParentValueRef.current = null;
+      return;
+    }
+    if (propValueRef.current === value) return;
+    propValueRef.current = value;
+    awaitingParentValueRef.current = null;
     sessionKeyRef.current = documentSessionKey;
     sourceRef.current = value;
     pendingStartRef.current = null;
@@ -182,6 +203,7 @@ export function NoteMarkdownEditor({
     const nextPendingStart = active?.start ?? rebased;
     const unresolved = nextPendingStart !== null;
     sourceRef.current = next;
+    awaitingParentValueRef.current = next;
     pendingStartRef.current = nextPendingStart;
     selectionSnapshotRef.current = selection;
     setPendingLink(unresolved);

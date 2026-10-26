@@ -73,6 +73,7 @@ beforeEach(() => {
 describe("DailyNotesBoard corrective UI", () => {
   it("holds Daily autosave and Ctrl+S until the raw internal-link marker is removed", async () => {
     const registeredFlushRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    mocks.updateDailyPrimaryDocument.mockResolvedValue({ document: document("doc-24", "day-24", "2026-09-24") });
     render(<DailyNotesBoard
       onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onExit={vi.fn()}
       onRegisterFlush={(flush) => { registeredFlushRef.current = flush; }}

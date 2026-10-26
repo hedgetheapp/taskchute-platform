@@ -94,6 +94,24 @@ describe("NoteMarkdownEditor and shared Note UI helpers", () => {
     });
   });
 
+  it("retains an unresolved toolbar marker while the parent has not echoed the changed source yet", async () => {
+    function EditorWithPendingState() {
+      const [pending, setPending] = useState(false);
+      const [value, setValue] = useState("body");
+      return <>
+        <NoteMarkdownEditor value={value} onChange={(next) => { window.setTimeout(() => setValue(next), 0); }} onUnresolvedInternalLinkChange={setPending} />
+        <output>{pending ? "pending" : "clear"}</output>
+      </>;
+    }
+    render(<EditorWithPendingState />);
+    const textarea = screen.getByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement;
+    textarea.focus(); textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "内部リンクを挿入" }));
+    expect(await screen.findByText("pending")).toBeTruthy();
+    await waitFor(() => expect(textarea.value).toBe("body[[]]"));
+    expect(screen.getByText(/内部リンク候補を選択するか/)).toBeTruthy();
+  });
+
   it("debounces candidate search, consumes only the matching closing marker, and keeps later source", async () => {
     vi.spyOn(api, "searchInternalDocumentLinks").mockResolvedValue({ candidates: [noteCandidate], next_cursor: null });
     render(<ControlledEditor initialValue="before " />);
