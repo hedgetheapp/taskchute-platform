@@ -23,7 +23,7 @@ No Worker, server API, database/schema/migration, or package dependency changed.
 - Web production build: PASS; Vite reports the existing client chunk-size advisory (>500 kB).
 - `git diff --check`: PASS.
 - Exact-SHA CI at `5c18362`: [run 40325481506](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40325481506) PASS. The repository's push workflow ran changed-surface classification, typecheck, all Web tests, Worker/D1 tests, and production build; Android verification was skipped. The first implementation run `40324793062` exposed the Daily editor's delayed parent-source echo race and failed; the fix was pushed and the final run passed.
-- No nonprod deployment or browser-based product QA was needed or performed because this change adds no server/API behavior. Product Verified remains **NO**. JSDOM tests do not establish native browser undo/redo history, real keyboard navigation in a narrow floating window, or visual behavior across browsers; these remain NOT_VERIFIED.
+- At the initial D-187 Phase 1 integration, no nonprod deployment or browser-based product QA had been performed because the change added no server/API behavior. The D187A follow-up below records the later authorized nonprod deployment and its incomplete native-browser acceptance. JSDOM tests do not establish native browser undo/redo history, real keyboard navigation in a narrow floating window, or visual behavior across browsers.
 
 ## Phase 2 recommendation — inline Markdown display while editing
 
@@ -42,3 +42,15 @@ Evaluate browser-local caret restore keyed by stable Document ID, plus the Web N
 - Which Notes list actions and multi-select operations are needed on desktop for Phase 3?
 
 These are open for later Product Owner review; this document does not resolve them.
+
+## D187A — nonprod rollout and browser closeout — 2026-10-26
+
+The D187A contract authorized deploying current `main` to the existing nonprod Worker and recording focused browser acceptance. Immediately before deploy, GitHub `main`, local `origin/main`, and the detached worktree all matched `130bdb80b65aff0b7840c7cc80276eb92d534eee`. No Worker, API, schema, migration, or dependency source differed from the D186D deployed Worker baseline.
+
+Gate A PASS: a fresh APP/AUTH export pair and manifest were retained in an ACL-protected operator-private directory. The exports were loaded into isolated in-memory SQLite databases; both passed `quick_check=ok` with zero foreign-key violations. APP-to-AUTH owner mapping was consistent. The D-182 baseline remained one orphan chain with one Completed Entry and one Completed Execution, zero active Executions, zero affected Quick pairs, and zero tombstones. The D-182 strict Gate 4 isolation status remains **NOT_VERIFIED**. No restore, remote migration, or database write was performed.
+
+Local typecheck passed. The four affected Web files passed **83 / 83**; an initial run failed before test discovery due to `EPERM` renaming a sandbox temporary cache, and the rerun using an ignored workspace temp directory passed. The nonprod build completed with client bundle `740.36 kB` (`199.10 kB` gzip), producing the existing Vite >500 kB advisory. Wrangler also reported the known FCM secret name missing from the local process environment; the configured remote secret binding was present, and no secret value was read. `npm run verify:nonprod-deploy` passed after `CLOUDFLARE_ENV` was unset.
+
+`npm run deploy:nonprod` published Worker version `3ef903aa-fa2e-47d9-b792-72940d4669ca` at 100% traffic on `taskchute-web-nonprod`. Canonical APP/AUTH resource IDs, `REALTIME_HUB`, `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, and secret binding names matched. APP and AUTH migrations both reported no pending migrations; none were applied. Read-only HTTP checks returned root `200`, the deployed JavaScript asset `200` with a SHA-256 match to the local build, and unauthenticated document search `401`.
+
+Native browser acceptance is **NOT_RUN / AUTH_FIXTURE_UNAVAILABLE** because no approved isolated QA authentication was available. No browser login, Note write, D-178 fixture access, D-182 orphan probe, QA session creation, or sign-out/revocation occurred. The requested four-surface toolbar, caret/selection, native undo/redo, real Japanese OS IME, save/CAS conflict and retry, and unresolved-marker route guard therefore remain **NOT_VERIFIED**. Existing unresolved D186B/D sessions were not touched. Product Verified **NO**; Production **NOT_RUN**; Released **NO**. Phase 2 and Phase 3 remain outside this authorization.
