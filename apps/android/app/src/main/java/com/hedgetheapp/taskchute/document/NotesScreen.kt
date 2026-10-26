@@ -311,6 +311,7 @@ fun TaskNoteBottomSheet(
                         cursorDocumentId = cursorIdentity.documentId,
                         onOpenInternalLink = onOpenInternalLink,
                         onSearchInternalLinks = onSearchInternalLinks,
+                        onTransientValueChange = controller::updateBodyWithoutAutosave,
                         onBodyFocusChanged = { bodyFocused = it },
                         footer = {
                             HorizontalDivider(color = TaskChuteColors.Divider)
@@ -564,6 +565,7 @@ private fun NoteEditor(
             cursorDocumentId = cursorIdentity.documentId,
             onOpenInternalLink = onOpenInternalLink,
             onSearchInternalLinks = onSearchInternalLinks,
+            onTransientValueChange = controller::updateBodyWithoutAutosave,
             onBodyFocusChanged = { bodyFocused = it },
             footer = {
                 Text(

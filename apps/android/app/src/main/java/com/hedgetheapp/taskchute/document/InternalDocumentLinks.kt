@@ -38,7 +38,12 @@ sealed interface InternalDocumentLinkSearchResult {
     data class Failure(val message: String) : InternalDocumentLinkSearchResult
 }
 
-data class InternalLinkQueryToken(val start: Int, val endExclusive: Int, val query: String)
+data class InternalLinkQueryToken(
+    val start: Int,
+    val endExclusive: Int,
+    val query: String,
+    val hasClosingMarker: Boolean = false,
+)
 
 internal fun parseAndroidInternalDocumentRoute(destination: String): AndroidInternalDocumentRoute? {
     val uri = runCatching { URI(destination) }.getOrNull() ?: return null
@@ -79,7 +84,26 @@ internal fun activeInternalLinkQuery(value: TextFieldValue): InternalLinkQueryTo
     if (opening < lineStart) return null
     val query = value.text.substring(opening + 2, caret)
     if (query.contains(']') || query.contains('\n') || query.length > 80) return null
-    return InternalLinkQueryToken(opening, caret, query)
+    return InternalLinkQueryToken(
+        start = opening,
+        endExclusive = caret,
+        query = query,
+        hasClosingMarker = value.text.startsWith("]]", caret),
+    )
+}
+
+internal fun insertInternalLinkTrigger(current: TextFieldValue): TextFieldValue? {
+    if (current.composition != null) return null
+    val start = current.selection.min.coerceIn(0, current.text.length)
+    val end = current.selection.max.coerceIn(start, current.text.length)
+    val selected = current.text.substring(start, end)
+    if (selected.contains('\n') || selected.contains('\r')) return null
+
+    val nextText = current.text.replaceRange(start, end, "[[$selected]]")
+    return current.copy(
+        text = nextText,
+        selection = TextRange(start + 2 + selected.length),
+    )
 }
 
 internal fun isInternalLinkSearchCurrent(
@@ -93,14 +117,16 @@ internal fun insertInternalMarkdownLink(
     expected: InternalLinkQueryToken,
     candidate: InternalDocumentLinkCandidate,
 ): TextFieldValue? {
-    if (current.composition != null || expected.endExclusive > current.text.length ||
+    val replacementEnd = expected.endExclusive + if (expected.hasClosingMarker) 2 else 0
+    if (current.composition != null || replacementEnd > current.text.length ||
         current.text.substring(expected.start, expected.endExclusive) != "[[${expected.query}" ||
+        (expected.hasClosingMarker && current.text.substring(expected.endExclusive, replacementEnd) != "]]") ||
         current.selection.end != expected.endExclusive || !current.selection.collapsed
     ) return null
     val label = candidate.label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
     val markdown = "[$label](${candidate.destination()})"
     val end = expected.start + markdown.length
-    val text = current.text.replaceRange(expected.start, expected.endExclusive, markdown)
+    val text = current.text.replaceRange(expected.start, replacementEnd, markdown)
     return current.copy(text = text, selection = TextRange(end))
 }
 

@@ -138,6 +138,7 @@ fun DailyScreen(
                         cursorDocumentId = cursorIdentity?.documentId,
                         onOpenInternalLink = onOpenInternalLink,
                         onSearchInternalLinks = onSearchInternalLinks,
+                        onTransientValueChange = controller::updateBodyWithoutAutosave,
                         onBodyFocusChanged = { editorBodyFocused = it },
                         footer = {
                             Text(

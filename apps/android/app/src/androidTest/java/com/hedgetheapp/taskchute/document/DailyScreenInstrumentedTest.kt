@@ -258,6 +258,79 @@ class DailyScreenInstrumentedTest {
     }
 
     @Test
+    fun dailyInternalLinkToolbarSelectsDateCandidateAndSavesStandardMarkdown() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val cursorStorage = context.getSharedPreferences(DocumentCursorPreferences.PREFERENCES_NAME, 0)
+        val cursorKey = DocumentCursorPreferences.CARET_OFFSET_PREFIX + "doc-1"
+        val hadCursor = cursorStorage.contains(cursorKey)
+        val oldCursor = cursorStorage.getInt(cursorKey, 0)
+        val repository = FakeRepository()
+        val searchCalls = AtomicInteger()
+        controller = DailyController(
+            repository = repository,
+            loadDay = { TodayResult.Success(day()) },
+            onUnauthorized = {},
+        )
+        val dailyCandidate = InternalDocumentLinkCandidate(
+            documentId = "daily-doc-1",
+            kind = InternalDocumentLinkKind.DAILY_PRIMARY,
+            label = "2026-09-29",
+            context = null,
+            archived = false,
+            logicalDate = "2026-09-29",
+        )
+        val simulatedImeHeight = 280.dp
+        try {
+            composeRule.setContent {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme {
+                        DailyScreen(
+                            controller = requireNotNull(controller),
+                            onNavigateToday = {},
+                            onNavigateNotes = {},
+                            onNavigateSettings = {},
+                            onSearchInternalLinks = { _, _ ->
+                                searchCalls.incrementAndGet()
+                                InternalDocumentLinkSearchResult.Success(
+                                    InternalDocumentLinkSearchPage(listOf(dailyCandidate), null),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(10_000) { controller?.state?.document != null }
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(10))
+            composeRule.onNodeWithContentDescription("リンク").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("内部リンクを挿入").performClick()
+
+            composeRule.mainClock.advanceTimeBy(400)
+            composeRule.waitUntil(5_000) { searchCalls.get() > 0 }
+            composeRule.onNodeWithText("2026-09-29").assertIsDisplayed()
+            assertEquals("Daily body[[]]", controller?.state?.markdownBody)
+            assertEquals(12, DocumentCursorPreferences(context).readCaretOffset("doc-1"))
+            assertEquals("candidate search does not save Daily content", 0, repository.updateCalls.get())
+            composeRule.runOnIdle { controller?.save() }
+            assertEquals("explicit save does not persist the temporary trigger", 0, repository.updateCalls.get())
+
+            composeRule.onNodeWithText("2026-09-29").performClick()
+            composeRule.waitUntil(10_000) { repository.updateCalls.get() > 0 && controller?.state?.dirty == false }
+            assertEquals("Daily body[2026-09-29](/?view=daily&date=2026-09-29)", repository.lastUpdateBody)
+            assertFalse(repository.lastUpdateBody.orEmpty().contains("]]"))
+        } finally {
+            if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
+            else cursorStorage.edit().remove(cursorKey).commit()
+        }
+    }
+
+    @Test
     fun dailyHeadingPickerSurvivesImeInsetChangeAndOnlySavesAfterSelection() {
         val repository = FakeRepository()
         val imeVisible = mutableStateOf(true)

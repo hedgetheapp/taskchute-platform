@@ -959,6 +959,7 @@ fun MarkdownLiveEditor(
     editorSessionKey: Any = Unit,
     cursorDocumentId: String? = null,
     onBodyFocusChanged: ((Boolean) -> Unit)? = null,
+    onTransientValueChange: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val cursorPreferences = remember(context) { DocumentCursorPreferences(context) }
@@ -984,6 +985,7 @@ fun MarkdownLiveEditor(
     var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var dismissedInternalLinkQuery by remember(editorSessionKey) { mutableStateOf<InternalLinkQueryToken?>(null) }
+    var pendingInternalLinkStart by remember(editorSessionKey) { mutableStateOf<Int?>(null) }
     var internalLinkSearchPage by remember(editorSessionKey) { mutableStateOf<InternalDocumentLinkSearchPage?>(null) }
     var internalLinkSearchLoading by remember(editorSessionKey) { mutableStateOf(false) }
     var internalLinkSearchError by remember(editorSessionKey) { mutableStateOf<String?>(null) }
@@ -1051,9 +1053,42 @@ fun MarkdownLiveEditor(
     val latestOpenUrl = rememberUpdatedState(onOpenUrl)
     val latestOpenInternalLink = rememberUpdatedState(onOpenInternalLink)
     val latestSearchInternalLinks = rememberUpdatedState(onSearchInternalLinks)
+    val latestTransientValueChange = rememberUpdatedState(onTransientValueChange)
     val editorScope = rememberCoroutineScope()
+    fun changedTextIsTransientInternalLink(previousText: String, next: TextFieldValue): Boolean {
+        val activeToken = activeInternalLinkQuery(next.copy(composition = null))
+        val previousStart = pendingInternalLinkStart
+            ?: activeInternalLinkQuery(fieldValue.copy(composition = null))?.start
+        val adjustedPreviousStart = previousStart?.let { start ->
+            val prefix = previousText.commonPrefixWith(next.text).length
+            var suffix = 0
+            while (suffix < previousText.length - prefix && suffix < next.text.length - prefix &&
+                previousText[previousText.length - suffix - 1] == next.text[next.text.length - suffix - 1]
+            ) suffix += 1
+            val oldEditEnd = previousText.length - suffix
+            when {
+                oldEditEnd <= start -> (start + next.text.length - previousText.length).coerceAtLeast(0)
+                prefix > start -> start
+                else -> null
+            }
+        }
+        val transientStart = activeToken?.start
+            ?: adjustedPreviousStart?.takeIf { next.text.startsWith("[[", it) }
+        pendingInternalLinkStart = transientStart
+        return transientStart != null
+    }
+    fun notifyEditorTextChange(previousText: String, next: TextFieldValue) {
+        if (changedTextIsTransientInternalLink(previousText, next)) {
+            latestTransientValueChange.value?.invoke(next.text) ?: onValueChange(next.text)
+        } else {
+            onValueChange(next.text)
+        }
+    }
     val rawInternalLinkQuery = activeInternalLinkQuery(fieldValue)
     val activeLinkPickerToken = rawInternalLinkQuery?.takeIf { it != dismissedInternalLinkQuery }
+    fun dismissInternalLinkPicker(token: InternalLinkQueryToken) {
+        dismissedInternalLinkQuery = token
+    }
     val openUrl = rememberUpdatedState<(String) -> Unit> { destination ->
         val customOpener = latestOpenUrl.value
         if (customOpener != null) {
@@ -1071,6 +1106,7 @@ fun MarkdownLiveEditor(
             reversibleToolbarEdit = null
             val result = toggleTaskCheckbox(fieldValue.text, sourceStart)
             if (result != null) {
+                val previousText = fieldValue.text
                 val preserved = preservedSelectionAfterCheckboxToggle(
                     MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
                     result,
@@ -1085,7 +1121,7 @@ fun MarkdownLiveEditor(
                 val next = fieldValue.copy(text = result.text, selection = selection, composition = composition)
                 staleTextAfterCheckboxToggle = fieldValue.text
                 fieldValue = next
-                onValueChange(next.text)
+                notifyEditorTextChange(previousText, next)
                 onTextFieldValueObserved(next)
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -1128,6 +1164,7 @@ fun MarkdownLiveEditor(
         if (fieldValue.text != value) {
             handledEnterEcho = null
             reversibleToolbarEdit = null
+            pendingInternalLinkStart = null
             rawThematicBreakSourceStart = null
             fieldValue = clampMarkdownTextFieldValueToBody(fieldValue, value)
             currentCursorDocumentId.value?.let { documentId ->
@@ -1136,7 +1173,7 @@ fun MarkdownLiveEditor(
         }
     }
 
-    LaunchedEffect(activeLinkPickerToken?.start, activeLinkPickerToken?.query) {
+    LaunchedEffect(activeLinkPickerToken) {
         val token = activeLinkPickerToken
         if (token == null) {
             internalLinkSearchPage = null
@@ -1377,7 +1414,9 @@ fun MarkdownLiveEditor(
                                 val next = continued ?: proposed
                                 if (continued != null) handledEnterEcho = MarkdownEnterEcho(proposed, continued)
                                 fieldValue = next
-                                if (next.text != previousText) onValueChange(next.text)
+                                if (next.text != previousText) {
+                                    notifyEditorTextChange(previousText, next)
+                                }
                                 onTextFieldValueObserved(next)
                             }
                         }
@@ -1441,7 +1480,7 @@ fun MarkdownLiveEditor(
                     reversibleToolbarEdit = result.reversibleEdit
                     selectionRestoreAfterTap = null
                     fieldValue = result.value
-                    if (result.value.text != previousValue.text) onValueChange(result.value.text)
+                    if (result.value.text != previousValue.text) notifyEditorTextChange(previousValue.text, result.value)
                     if (result.value != previousValue) {
                         onTextFieldValueObserved(result.value)
                         focusRequester.requestFocus()
@@ -1479,6 +1518,28 @@ fun MarkdownLiveEditor(
                         keyboardController?.show()
                     }
                 },
+                onInternalLinkClick = {
+                    val previousValue = fieldValue
+                    val next = insertInternalLinkTrigger(previousValue)
+                    if (next != null) {
+                        reversibleToolbarEdit = null
+                        selectionRestoreAfterTap = null
+                        dismissedInternalLinkQuery = null
+                        fieldValue = next
+                        if (next.text != previousValue.text) {
+                            val token = activeInternalLinkQuery(next)
+                            pendingInternalLinkStart = token?.start
+                            if (token != null) {
+                                latestTransientValueChange.value?.invoke(next.text) ?: onValueChange(next.text)
+                            } else {
+                                onValueChange(next.text)
+                            }
+                        }
+                        onTextFieldValueObserved(next)
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+                },
             )
         }
         if (headingPickerOpen) {
@@ -1500,7 +1561,7 @@ fun MarkdownLiveEditor(
                         reversibleToolbarEdit = result.reversibleEdit
                         selectionRestoreAfterTap = null
                         fieldValue = result.value
-                        if (result.value.text != previousValue.text) onValueChange(result.value.text)
+                        if (result.value.text != previousValue.text) notifyEditorTextChange(previousValue.text, result.value)
                         if (result.value != previousValue) onTextFieldValueObserved(result.value)
                     } else {
                         reversibleToolbarEdit = null
@@ -1513,7 +1574,7 @@ fun MarkdownLiveEditor(
         }
         activeLinkPickerToken?.let { token ->
             AlertDialog(
-                onDismissRequest = { dismissedInternalLinkQuery = token },
+                onDismissRequest = { dismissInternalLinkPicker(token) },
                 title = { Text("リンク先を選択") },
                 text = {
                     Column(
@@ -1534,6 +1595,7 @@ fun MarkdownLiveEditor(
                                     val next = if (currentToken == token) insertInternalMarkdownLink(current, token, candidate) else null
                                     if (next != null) {
                                         reversibleToolbarEdit = null
+                                        pendingInternalLinkStart = null
                                         fieldValue = next
                                         onValueChange(next.text)
                                         onTextFieldValueObserved(next)
@@ -1586,7 +1648,7 @@ fun MarkdownLiveEditor(
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { dismissedInternalLinkQuery = token }) { Text("キャンセル") } },
+                confirmButton = { TextButton(onClick = { dismissInternalLinkPicker(token) }) { Text("キャンセル") } },
             )
         }
     }
@@ -1719,6 +1781,7 @@ internal fun MarkdownImeToolbar(
     horizontalRuleSourceActionLabel: String? = null,
     horizontalRuleSourceActionIcon: Int = R.drawable.ic_material_edit_24,
     onHorizontalRuleSourceAction: () -> Unit = {},
+    onInternalLinkClick: () -> Unit = {},
 ) {
     Row(
         modifier = modifier.horizontalScroll(scrollState).padding(horizontal = 4.dp).testTag("markdown-ime-toolbar"),
@@ -1741,6 +1804,7 @@ internal fun MarkdownImeToolbar(
         MarkdownToolbarAction(R.drawable.ic_material_link_24, "リンク", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.LINK)
         }
+        MarkdownInternalLinkToolbarAction(modifier = Modifier.width(48.dp), onClick = onInternalLinkClick)
         MarkdownToolbarAction(R.drawable.ic_material_horizontal_rule_24, "区切り線", modifier = Modifier.width(44.dp)) {
             onAction(MarkdownToolbarActionId.HORIZONTAL_RULE)
         }
@@ -1847,6 +1911,28 @@ private fun MarkdownToolbarAction(
             contentDescription = null,
             modifier = Modifier.size(20.dp),
             tint = TaskChuteColors.PrimaryText,
+        )
+    }
+}
+
+@Composable
+private fun MarkdownInternalLinkToolbarAction(
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.height(48.dp)
+            .focusProperties { canFocus = false }
+            .semantics { contentDescription = "内部リンクを挿入" }
+            .testTag("markdown-internal-link-toolbar-action"),
+    ) {
+        Text(
+            text = "[[]]",
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
         )
     }
 }

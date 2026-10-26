@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -83,6 +84,54 @@ class NotesControllerTest {
         assertTrue(await { controller.state.editor?.title == "notitle3" })
         assertEquals("doc-1", controller.state.editor?.document?.documentId)
         assertFalse(controller.state.editor?.dirty ?: true)
+        controller.close()
+    }
+
+    @Test
+    fun internalLinkSearchFailureDoesNotChangeNoteSaveStateOrSource() = runBlocking {
+        val repository = FakeRepository().apply {
+            fetchResult = DocumentResult.Success(document("doc-1", "Note", "existing [[ source", 3))
+        }
+        val controller = controller(repository)
+        controller.openStandalone("doc-1")
+        assertTrue(await { controller.state.editor != null })
+        val before = controller.state.editor
+
+        val result = controller.searchInternalLinks("[[", null)
+
+        assertTrue(result is InternalDocumentLinkSearchResult.Failure)
+        assertEquals(before?.markdownBody, controller.state.editor?.markdownBody)
+        assertEquals(before?.saveStatus, controller.state.editor?.saveStatus)
+        assertEquals(before?.dirty, controller.state.editor?.dirty)
+        assertTrue(repository.updateRequests.isEmpty())
+        controller.close()
+    }
+
+    @Test
+    fun unresolvedInternalLinkDraftStaysUnsavedUntilResolved() {
+        val repository = FakeRepository().apply {
+            fetchResult = DocumentResult.Success(document("doc-1", "Note", "body", 3))
+        }
+        val controller = controller(repository)
+        val navigated = AtomicBoolean(false)
+        controller.openStandalone("doc-1")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBodyWithoutAutosave("body[[]]")
+        controller.save()
+        controller.flushAndNavigate { navigated.set(true) }
+        assertEquals("body[[]]", controller.state.editor?.markdownBody)
+        assertTrue(controller.state.editor?.dirty == true)
+        assertTrue(repository.updateRequests.isEmpty())
+        assertFalse(navigated.get())
+
+        controller.updateBody("body[Target](/?view=note&document=018f47a2-7b31-7abc-8def-1234567890ab)")
+        controller.save()
+        assertTrue(await { repository.updateRequests.size == 1 && navigated.get() })
+        assertEquals(
+            "body[Target](/?view=note&document=018f47a2-7b31-7abc-8def-1234567890ab)",
+            repository.updateRequests.single().markdownBody,
+        )
         controller.close()
     }
 

@@ -26,6 +26,36 @@ class DocumentHttpRepositoryTest {
     }
 
     @Test
+    fun internalLinkSearchHttpFailureIsReportedAsSearchFailureAndDoesNotAlterSaveMapping() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            if (method == "GET") {
+                TodayHttpResponse(404, """{"error":{"code":"route_not_found"}}""")
+            } else {
+                TodayHttpResponse(422, """{"error":{"code":"validation_error"}}""")
+            }
+        })
+
+        val search = repository.searchInternalLinks("[[", null) as InternalDocumentLinkSearchResult.Failure
+        val save = repository.updateStandalone(StandaloneUpdateRequest("op-1", "doc-1", 2, "Note", "[[")) as DocumentResult.Failure
+
+        assertEquals("候補を読み込めませんでした。再試行してください。", search.message)
+        assertEquals("ノートを保存できませんでした。再試行してください。", save.message)
+        assertEquals(2, requests.size)
+        assertEquals("GET", requests[0].first)
+        assertEquals("/api/v1/documents/search?q=%5B%5B", requests[0].second)
+        assertEquals(null, requests[0].third)
+        assertEquals("POST", requests[1].first)
+        assertEquals("/api/v1/documents/doc-1", requests[1].second)
+        assertTrue(requests[1].third.orEmpty().contains("\"markdown_body\":\"[[\""))
+
+        val networkSearch = DocumentHttpRepository(request = { _, _, _ -> null })
+            .searchInternalLinks("[[", null) as InternalDocumentLinkSearchResult.Failure
+        assertEquals("候補を読み込めませんでした。再試行してください。", networkSearch.message)
+    }
+
+    @Test
     fun permalinkResolutionIsReadOnlyAndUsesCurrentTaskTitleProjection() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = DocumentHttpRepository(request = { method, path, body ->

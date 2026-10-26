@@ -67,6 +67,46 @@ class MarkdownLiveEditorTest {
     }
 
     @Test
+    fun internalLinkToolbarInsertsAtCaretWrapsSingleLineSelectionAndLeavesUnsafeInputsUntouched() {
+        val collapsed = insertInternalLinkTrigger(TextFieldValue("aXb", selection = TextRange(1)))
+        assertEquals("a[[]]Xb", collapsed?.text)
+        assertEquals(TextRange(3), collapsed?.selection)
+
+        val selected = TextFieldValue("leftOpenAIright", selection = TextRange(10, 4))
+        val wrapped = insertInternalLinkTrigger(selected)
+        assertEquals("left[[OpenAI]]right", wrapped?.text)
+        assertEquals(TextRange(12), wrapped?.selection)
+
+        val multiline = TextFieldValue("first\nsecond", selection = TextRange(0, 12))
+        assertNull(insertInternalLinkTrigger(multiline))
+
+        val composing = TextFieldValue("かな", selection = TextRange(2), composition = TextRange(0, 2))
+        assertNull(insertInternalLinkTrigger(composing))
+        assertEquals("かな", composing.text)
+    }
+
+    @Test
+    fun candidateReplacementConsumesOnlyTheMatchingClosingMarkerAndKeepsLaterSource() {
+        val id = "018f47a2-7b31-7abc-8def-1234567890ab"
+        val input = TextFieldValue("before [[query]] after ]] and [[other]]", selection = TextRange(14))
+        val token = activeInternalLinkQuery(input)
+        assertEquals(InternalLinkQueryToken(7, 14, "query", hasClosingMarker = true), token)
+
+        val candidate = InternalDocumentLinkCandidate(
+            documentId = id,
+            kind = InternalDocumentLinkKind.STANDALONE,
+            label = "Target",
+            context = null,
+            archived = false,
+            logicalDate = null,
+        )
+        val inserted = insertInternalMarkdownLink(input, requireNotNull(token), candidate)
+
+        assertEquals("before [Target](/?view=note&document=$id) after ]] and [[other]]", inserted?.text)
+        assertEquals(TextRange(7 + "[Target](/?view=note&document=$id)".length), inserted?.selection)
+    }
+
+    @Test
     fun internalLinkSearchIgnoresStaleComposingAndDismissedResults() {
         val current = TextFieldValue("[[Atlas", selection = TextRange(7))
         val token = requireNotNull(activeInternalLinkQuery(current))

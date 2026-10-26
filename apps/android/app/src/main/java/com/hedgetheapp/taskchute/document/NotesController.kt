@@ -109,6 +109,7 @@ class NotesController(
     private var editorGeneration = 0
     private var listGeneration = 0
     private var debounceJob: Job? = null
+    private var internalLinkAutosaveDeferred = false
     private var deferredNavigation: (() -> Unit)? = null
     private var notesSurfaceLoaded = false
     private var activeListSnapshot: NotesListSnapshot? = null
@@ -224,6 +225,7 @@ class NotesController(
         sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
         debounceJob?.cancel()
         debounceJob = null
+        internalLinkAutosaveDeferred = false
         deferredNavigation = null
         notesSurfaceLoaded = false
         activeListSnapshot = null
@@ -675,6 +677,7 @@ class NotesController(
     fun updateBody(value: String) {
         val editor = state.editor ?: return
         if (editor.blocked) return
+        internalLinkAutosaveDeferred = false
         state = state.copy(editor = editor.copy(
             markdownBody = value,
             saveStatus = if (editor.saving) NoteSaveStatus.SAVING else if (editor.errorMessage == null) NoteSaveStatus.UNSAVED else editor.saveStatus,
@@ -682,9 +685,22 @@ class NotesController(
         if (editor.errorMessage == null) scheduleAutosave()
     }
 
+    fun updateBodyWithoutAutosave(value: String) {
+        val editor = state.editor ?: return
+        if (editor.blocked) return
+        internalLinkAutosaveDeferred = true
+        debounceJob?.cancel()
+        debounceJob = null
+        state = state.copy(editor = editor.copy(
+            markdownBody = value,
+            saveStatus = if (editor.saving) NoteSaveStatus.SAVING else if (editor.errorMessage == null) NoteSaveStatus.UNSAVED else editor.saveStatus,
+        ))
+    }
+
     fun save() {
         val editor = state.editor ?: return
         if (editor.saving) return
+        if (internalLinkAutosaveDeferred) return
         debounceJob?.cancel()
         debounceJob = null
         if (editor.unresolvedRequest != null) {
@@ -1003,6 +1019,7 @@ class NotesController(
     }
 
     private fun scheduleAutosave() {
+        if (internalLinkAutosaveDeferred) return
         val generation = editorGeneration
         debounceJob?.cancel()
         val editor = state.editor ?: return
@@ -1025,6 +1042,7 @@ class NotesController(
     private fun clearEditor() {
         debounceJob?.cancel()
         debounceJob = null
+        internalLinkAutosaveDeferred = false
         deferredNavigation = null
         pendingDocumentInvalidationWildcard = false
         pendingDocumentInvalidationIds.clear()

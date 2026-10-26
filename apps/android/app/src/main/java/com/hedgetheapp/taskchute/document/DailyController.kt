@@ -48,6 +48,7 @@ class DailyController(
     private var sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
     private var unauthorizedLoadGeneration: Int? = null
     private var debounceJob: Job? = null
+    private var internalLinkAutosaveDeferred = false
     private var deferredNavigation: (() -> Unit)? = null
     private var lastRequestedLogicalDate: String? = null
     private val dailySummaryCache = mutableMapOf<String, AndroidDailyDocumentSummary>()
@@ -171,14 +172,25 @@ class DailyController(
 
     fun updateBody(value: String) {
         if (state.blocked) return
+        internalLinkAutosaveDeferred = false
         if (value != state.markdownBody) localEditGeneration += 1
         state = state.copy(markdownBody = value, saveStatus = if (state.saving) DailySaveStatus.SAVING else DailySaveStatus.UNSAVED, errorMessage = null, canRetryLoad = false)
         scheduleAutosave()
     }
 
+    fun updateBodyWithoutAutosave(value: String) {
+        if (state.blocked) return
+        internalLinkAutosaveDeferred = true
+        debounceJob?.cancel()
+        debounceJob = null
+        if (value != state.markdownBody) localEditGeneration += 1
+        state = state.copy(markdownBody = value, saveStatus = if (state.saving) DailySaveStatus.SAVING else DailySaveStatus.UNSAVED, errorMessage = null, canRetryLoad = false)
+    }
+
     fun save() {
         val current = state.document ?: return
         if (state.saving || state.blocked) return
+        if (internalLinkAutosaveDeferred) return
         debounceJob?.cancel()
         debounceJob = null
         if (!state.dirty) {
@@ -212,6 +224,7 @@ class DailyController(
         sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
         debounceJob?.cancel()
         debounceJob = null
+        internalLinkAutosaveDeferred = false
         unauthorizedLoadGeneration = null
         deferredNavigation = null
         lastRequestedLogicalDate = null
@@ -460,7 +473,7 @@ class DailyController(
 
     private fun scheduleAutosave() {
         debounceJob?.cancel()
-        if (!state.dirty || state.blocked) return
+        if (!state.dirty || state.blocked || internalLinkAutosaveDeferred) return
         debounceJob = sessionScope.launch {
             delay(1_000)
             if (state.dirty && !state.saving && !state.blocked) save()

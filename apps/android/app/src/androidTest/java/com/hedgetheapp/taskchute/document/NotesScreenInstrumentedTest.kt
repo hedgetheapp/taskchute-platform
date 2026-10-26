@@ -96,6 +96,161 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
+    fun internalLinkToolbarSearchAndSelectionUseNotesSavePath() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val cursorStorage = context.getSharedPreferences(DocumentCursorPreferences.PREFERENCES_NAME, 0)
+        val cursorKey = DocumentCursorPreferences.CARET_OFFSET_PREFIX + "doc-1"
+        val hadCursor = cursorStorage.contains(cursorKey)
+        val oldCursor = cursorStorage.getInt(cursorKey, 0)
+        val documentId = "018f47a2-7b31-7abc-8def-1234567890ab"
+        val repository = FakeRepository().apply {
+            standaloneDocuments["doc-1"] = AndroidDocument("doc-1", DocumentKind.STANDALONE, "Note", "body", 0)
+            internalLinkSearchResult = InternalDocumentLinkSearchResult.Success(
+                InternalDocumentLinkSearchPage(
+                    listOf(InternalDocumentLinkCandidate(
+                        documentId = documentId,
+                        kind = InternalDocumentLinkKind.STANDALONE,
+                        label = "Target note",
+                        context = null,
+                        archived = false,
+                        logicalDate = null,
+                    )),
+                    nextCursor = null,
+                ),
+            )
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        val simulatedImeHeight = 280.dp
+        try {
+            composeRule.setContent {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme { notesScreen() }
+                }
+            }
+            composeRule.runOnIdle { controller!!.openStandalone("doc-1") }
+            composeRule.waitUntil(10_000) { controller?.state?.editor?.document?.documentId == "doc-1" }
+            composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+                click(Offset(width * 0.8f, height * 0.8f))
+            }
+            composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(4))
+            composeRule.onNodeWithTag("markdown-ime-toolbar").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("リンク").assertIsDisplayed()
+            composeRule.onNodeWithText("[[]]", useUnmergedTree = true).assertIsDisplayed()
+
+            composeRule.onNodeWithContentDescription("内部リンクを挿入").performClick()
+            composeRule.mainClock.advanceTimeBy(400)
+            composeRule.waitUntil(5_000) { repository.internalLinkSearchCalls.get() > 0 }
+            composeRule.onNodeWithText("Target note").assertIsDisplayed()
+            assertEquals("body[[]]", controller?.state?.editor?.markdownBody)
+            assertEquals(6, DocumentCursorPreferences(context).readCaretOffset("doc-1"))
+            assertEquals("search and preview do not save the note", 0, repository.updateCalls.get())
+
+            composeRule.onNodeWithText("Target note").performClick()
+            composeRule.waitUntil(10_000) { repository.updateCalls.get() > 0 && controller?.state?.editor?.dirty == false }
+            assertEquals("body[Target note](/?view=note&document=$documentId)", repository.lastUpdate?.markdownBody)
+            assertFalse(repository.lastUpdate?.markdownBody.orEmpty().contains("]]"))
+        } finally {
+            if (hadCursor) cursorStorage.edit().putInt(cursorKey, oldCursor).commit()
+            else cursorStorage.edit().remove(cursorKey).commit()
+        }
+    }
+
+    @Test
+    fun cancelingInternalLinkPickerKeepsRawDraftWithoutSavingIt() {
+        val repository = FakeRepository().apply {
+            standaloneDocuments["doc-1"] = AndroidDocument("doc-1", DocumentKind.STANDALONE, "Note", "body", 0)
+            internalLinkSearchResult = InternalDocumentLinkSearchResult.Success(
+                InternalDocumentLinkSearchPage(emptyList(), nextCursor = null),
+            )
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        val simulatedImeHeight = 280.dp
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme { notesScreen() }
+            }
+        }
+        composeRule.runOnIdle { controller!!.openStandalone("doc-1") }
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document?.documentId == "doc-1" }
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(4))
+        composeRule.onNodeWithContentDescription("内部リンクを挿入").performClick()
+        composeRule.mainClock.advanceTimeBy(400)
+        composeRule.waitUntil(5_000) { repository.internalLinkSearchCalls.get() > 0 }
+        composeRule.onNodeWithText("候補がありません。").assertIsDisplayed()
+
+        composeRule.onNodeWithText("キャンセル").performClick()
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.waitForIdle()
+        assertEquals("cancel leaves the source draft unchanged", "body[[]]", controller?.state?.editor?.markdownBody)
+        assertEquals("cancel preserves an unsaved source draft", NoteSaveStatus.UNSAVED, controller?.state?.editor?.saveStatus)
+        assertEquals("cancel does not persist the temporary trigger", 0, repository.updateCalls.get())
+
+        composeRule.runOnIdle { controller?.save() }
+        composeRule.waitForIdle()
+        assertEquals("explicit save does not persist the temporary trigger", 0, repository.updateCalls.get())
+    }
+
+    @Test
+    fun taskPrimaryNoteInternalLinkToolbarUsesSharedCandidateAndAutosaveFlow() {
+        val repository = FakeRepository().apply {
+            taskDocument = AndroidDocument("task-doc", DocumentKind.TASK_PRIMARY, "", "Task body", 0, taskId = "task-1")
+            internalLinkSearchResult = InternalDocumentLinkSearchResult.Success(
+                InternalDocumentLinkSearchPage(
+                    listOf(InternalDocumentLinkCandidate(
+                        documentId = "018f47a2-7b31-7abc-8def-1234567890ab",
+                        kind = InternalDocumentLinkKind.PROJECT_PRIMARY,
+                        label = "Project note",
+                        context = "Project",
+                        archived = false,
+                        logicalDate = null,
+                    )),
+                    nextCursor = null,
+                ),
+            )
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        val simulatedImeHeight = 280.dp
+        composeRule.setContent {
+            val density = LocalDensity.current
+            val simulatedImeInsets = remember(density) {
+                WindowInsets(bottom = with(density) { simulatedImeHeight.roundToPx() })
+            }
+            CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                MaterialTheme { notesScreen() }
+            }
+        }
+        composeRule.runOnIdle { controller!!.openTaskPrimary("task-1", "Task title", "task-doc") }
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document?.documentId == "task-doc" }
+        composeRule.onNodeWithTag("markdown-editor-scroll-viewport").performTouchInput {
+            click(Offset(width * 0.8f, height * 0.8f))
+        }
+        composeRule.onNodeWithContentDescription("Markdown body").performTextInputSelection(TextRange(9))
+        composeRule.onNodeWithTag("markdown-internal-link-toolbar-action").assertIsDisplayed().performClick()
+        composeRule.mainClock.advanceTimeBy(400)
+        composeRule.waitUntil(5_000) { repository.internalLinkSearchCalls.get() > 0 }
+        assertEquals("Task body[[]]", controller?.state?.editor?.markdownBody)
+        assertEquals("opening the picker does not save a Task Primary Note", 0, repository.taskUpdateCalls.get())
+
+        composeRule.onNodeWithText("Project note").assertIsDisplayed().performClick()
+        composeRule.waitUntil(10_000) { repository.taskUpdateCalls.get() > 0 && controller?.state?.editor?.dirty == false }
+        assertEquals(
+            "Task body[Project note](/?view=note&document=018f47a2-7b31-7abc-8def-1234567890ab)",
+            repository.lastTaskUpdateBody,
+        )
+    }
+
+    @Test
     fun explicitSaveFlushesImmediately() {
         val repository = FakeRepository()
         controller = NotesController(repository, onUnauthorized = {})
@@ -1528,6 +1683,7 @@ class NotesScreenInstrumentedTest {
         onNavigateToday = {},
         onNavigateSettings = {},
         onNavigateReview = onNavigateReview,
+        onSearchInternalLinks = { query, cursor -> requireNotNull(controller).searchInternalLinks(query, cursor) },
     )
 
     private class FakeRepository : AndroidDocumentRepository {
@@ -1552,6 +1708,15 @@ class NotesScreenInstrumentedTest {
         var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
         var projectDocument: AndroidDocument? = null
         var projectEnsureResult: DocumentResult? = null
+        val internalLinkSearchCalls = AtomicInteger()
+        var internalLinkSearchResult: InternalDocumentLinkSearchResult = InternalDocumentLinkSearchResult.Success(
+            InternalDocumentLinkSearchPage(emptyList(), null),
+        )
+
+        override fun searchInternalLinks(query: String, cursor: String?): InternalDocumentLinkSearchResult {
+            internalLinkSearchCalls.incrementAndGet()
+            return internalLinkSearchResult
+        }
 
         override fun listStandalone(archived: Boolean) = DocumentListResult.Success(
             if (archived) archivedDocuments else activeDocuments,

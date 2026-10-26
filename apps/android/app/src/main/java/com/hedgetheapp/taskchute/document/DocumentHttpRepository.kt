@@ -71,7 +71,13 @@ class DocumentHttpRepository(
             append("/api/v1/documents/search?q=").append(java.net.URLEncoder.encode(query, Charsets.UTF_8.name()))
             if (cursor != null) append("&cursor=").append(java.net.URLEncoder.encode(cursor, Charsets.UTF_8.name()))
         }
-        return when (val response = execute("GET", path, null)) {
+        return when (val response = execute(
+            method = "GET",
+            path = path,
+            body = null,
+            networkFailureMessage = "候補を読み込めませんでした。再試行してください。",
+            failureMessageForCode = { "候補を読み込めませんでした。再試行してください。" },
+        )) {
             is HttpResult.Success -> runCatching {
                 val root = response.body.objectValue()
                 val candidates = root.arrayField("candidates").map { value ->
@@ -187,11 +193,23 @@ class DocumentHttpRepository(
         }
     }
 
-    private fun execute(method: String, path: String, body: String?): HttpResult {
+    private fun execute(
+        method: String,
+        path: String,
+        body: String?,
+        networkFailureMessage: String = "接続できませんでした。再試行してください。",
+        failureMessageForCode: (String?) -> String = { code ->
+            when (code) {
+                "revision_conflict" -> "サーバー側でノートが変更されています。再読み込みしてください。"
+                "infrastructure_ambiguous" -> "保存結果を確認できませんでした。元の操作を再試行してください。"
+                else -> "ノートを保存できませんでした。再試行してください。"
+            }
+        },
+    ): HttpResult {
         val response = runCatching { request(method, path, body) }.getOrNull()
-            ?: return HttpResult.Failure("接続できませんでした。再試行してください。", ambiguous = true)
+            ?: return HttpResult.Failure(networkFailureMessage, ambiguous = true)
         return when {
-            response.status == null -> HttpResult.Failure("接続できませんでした。再試行してください。", ambiguous = true)
+            response.status == null -> HttpResult.Failure(networkFailureMessage, ambiguous = true)
             response.status == 401 -> {
                 onUnauthorized()
                 HttpResult.Unauthorized
@@ -201,11 +219,7 @@ class DocumentHttpRepository(
                     response.body?.let { JsonParser(it).parse().objectValue().objectField("error").stringField("code") }
                 }.getOrNull()
                 HttpResult.Failure(
-                    message = when (code) {
-                        "revision_conflict" -> "サーバー側でノートが変更されています。再読み込みしてください。"
-                        "infrastructure_ambiguous" -> "保存結果を確認できませんでした。元の操作を再試行してください。"
-                        else -> "ノートを保存できませんでした。再試行してください。"
-                    },
+                    message = failureMessageForCode(code),
                     notFound = response.status == 404,
                     conflict = code == "revision_conflict" || response.status == 409,
                     ambiguous = code == "infrastructure_ambiguous" || response.status == 503,
