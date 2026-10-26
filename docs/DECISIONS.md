@@ -1,10 +1,10 @@
 ## D-185 — Android Markdown editor corrective v0.3
 
-Status: **Approved / implementation in progress / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
+Status: **Approved / implemented at `e9b012f5ffa9e2bd3b095932e39dd12211ada19e` / exact-SHA CI PASS / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
 
 Canonical Decision: `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V03.md`.
 
-Android-only correction to D-184. v0.2 evidence and its ordered-list Enter, line-move, and underline decisions remain in `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V02.md`. v0.3 supersedes only the v0.2 active thematic-break presentation rule: an active standalone thematic break now continues to render as one continuous full-width divider. The contextual `区切り線ソースを編集` action reveals/selects the original `---`; preview/edit toggles do not write source. Toolbar insertion creates the minimal blank separator needed to avoid interpreting the new hyphen row as a Setext underline, while preserving existing `Title\n---` classification and source text. No API, Worker, schema, migration, Web, dependency, production, or release change.
+Android-only correction to D-184. v0.2 evidence and its ordered-list Enter, line-move, and underline decisions remain in `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V02.md`. v0.3 supersedes only the v0.2 active thematic-break presentation rule: an active standalone thematic break now continues to render as one continuous full-width divider. The contextual `区切り線ソースを編集` action reveals/selects the original `---`; preview/edit toggles do not write source. Toolbar insertion creates the minimal blank separator needed to avoid interpreting the new hyphen row as a Setext underline, while preserving existing `Title\n---` classification and source text. Exact-SHA CI run `40269910487` passed; signed Phone APK artifact `12628275712`, versionCode `1308`, package `com.hedgetheapp.taskchute`. Product Verified remains NO pending owner device verification. No API, Worker, schema, migration, Web, dependency, production, or release change.
 
 ## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
 

@@ -1,7 +1,7 @@
 # D-185 — Android Markdown editor corrective v0.3
 
 Date: 2026-10-26
-Status: **Approved; implementation verification in progress**
+Status: **Approved; implemented and exact-SHA CI verified; Product Verified NO; Released NO**
 
 ## Decision
 
@@ -19,4 +19,10 @@ Focused JVM command/transformation tests, API 33 Compose pixel-layout tests, the
 
 ## Implementation verification record
 
-Pending implementation commit and exact-SHA CI closeout. Do not mark this decision verified based only on local emulator evidence.
+Implementation/source commit: `e9b012f5ffa9e2bd3b095932e39dd12211ada19e`, fast-forward pushed to existing `main` from base `8baa29f5ce72dd0e7e15e29006b5b0108a8b4f76`.
+
+Local verification: `MarkdownLiveEditorTest` 49 / 49 PASS; `:app:compileDebugAndroidTestKotlin :app:assembleDebug` PASS; API 33 HR focused tests 2 / 2 PASS; `scripts/android-qa.ps1 -Surface Notes` 40 / 40 PASS (instrumentation exit 0, post-test install/activity resolution PASS, no app crash entries); final-source Daily smoke 1 / 1 PASS; final-source Task Note smoke 1 / 1 PASS; `git diff --check` PASS.
+
+Exact-source [GitHub Actions run `40269910487`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40269910487) completed successfully for changed-surface classification, Android JVM, signed Phone/Wear nonprod builds, instrumentation APK compilation, signer validation and artifact upload. Web/Worker verification was skipped by Android-only classification. Phone artifact ID `12628275712`, name `taskchute-android-debug-e9b012f5ffa9e2bd3b095932e39dd12211ada19e`, expires `2026-11-02T04:39:38Z`. ZIP SHA-256 `1412A092D14A6DF3DBFDABEFCD84EDF9890DAF675584DE2A56B56C388BB78D73`; APK SHA-256 `A01099092B59DFFA643C2BFEFE7F92212AED8E37D224322F63779E629CCC4BA9`; package `com.hedgetheapp.taskchute`; versionCode `1308`; versionName `0.1`; signer certificate SHA-256 `690c0ba4ec3c8c92c84883f54ba343ff37ac0b83cedcaeb626777885e8b602b3`. The ZIP digest matched the Actions artifact digest and the actual APK metadata and signer were inspected.
+
+Synthetic Compose insets and API 33 AVD evidence do not constitute physical OS IME or Galaxy S23 verification. Actual OS IME NOT_VERIFIED / Galaxy S23 NOT_RUN / Product Verified NO / Production NOT_RUN / Released NO.
