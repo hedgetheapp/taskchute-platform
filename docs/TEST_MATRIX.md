@@ -1,3 +1,14 @@
+## D-187 Web Notes Android parity Phase 1 — 2026-10-26
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D187-EDITOR | Shared Web raw-source editor | Provide accessible formatting commands across Standalone, Task Primary, Project Primary inline/floating, and Daily while preserving source, caret/selection direction, line endings, D-185 Setext/HR, and save pipeline | `NoteMarkdownEditor.test.tsx` command/source/selection cases; affected four Web test files **83 / 83 PASS**; typecheck PASS. | PASS / FOCUSED |
+| D187-LINKS | D-186 internal link picker | Debounce/cancel/stale/session/IME guard, four kinds and stable routes, escaping, pagination, empty/error/401/404 separation; replace only the active marker | `NoteMarkdownEditor.test.tsx` picker tests; `NotesBoard.test.tsx` candidate selection and existing revision CAS; focused suite **83 / 83 PASS**. | PASS / FOCUSED |
+| D187-SAVE-GUARD | Draft safety across Notes surfaces | Pending `[[...` remains dirty and prevents autosave, explicit/Ctrl+S save, safe flush, Note/date/floating transitions; choosing/removing marker reuses existing save path | Standalone/Project inline, Task, Daily tests cover no mutation while unresolved and save after resolution/removal. Delayed parent-source echo race is covered after fix `5c18362`. | PASS / FOCUSED |
+| D187-CI | Exact implementation SHA | Confirm repository workflow on final source SHA | [Actions run `40325481506`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40325481506), SHA `5c18362c622c29055892fc84301b35b50d17e37d`: classifier, typecheck, all Web tests, automatic Worker/D1 tests, and production build PASS; Android skipped. Initial run `40324793062` failed the Daily echo-race test; the fix and final passing run are recorded in the D-187 decision. | PASS / EXACT-SHA |
+| D187-BUILD | Web production build | Build changed Web source | `npm run build` PASS; Vite emitted a client chunk >500 kB advisory. | PASS / LOCAL + CI |
+| D187-PRODUCT | Browser/device and deployment boundary | Distinguish automation from product verification; avoid unnecessary deployment for a client-only change | Browser-based Product Verified NO; native browser undo/redo and narrow floating-window keyboard/visual behavior NOT_VERIFIED. No nonprod deployment, production operation, API/Worker/schema/migration/dependency change, or Android artifact. | NOT_RUN / NO |
+
 ## D-185 Android horizontal rule visible fix v0.3 — 2026-10-26
 
 | ID | Area | Requirement | Evidence | Status |

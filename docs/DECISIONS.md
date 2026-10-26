@@ -1,3 +1,11 @@
+## D-187 — Web Notes Android parity, Phase 1
+
+Status: **User-requested Phase 1 implemented and integrated at `5c18362c622c29055892fc84301b35b50d17e37d` / exact-SHA CI [run `40325481506`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40325481506) PASS / Product Verified NO / Released NO.** This records the user's Phase 1 request only; it does not declare complete Web/Android parity or approve Phases 2–3.
+
+Canonical Decision: `docs/decisions/D-187_WEB_NOTES_ANDROID_PARITY_V01.md`.
+
+Phase 1 adds a shared accessible raw-source Markdown toolbar and D-186 internal-link candidate insertion across Standalone, Task Primary, Project Primary, and Daily Notes. Unresolved link markers remain draft-only and block automatic/explicit save and safe flush. No server API, Worker, schema, migration, dependency, production, or release change. Browser-based Product Verified remains NO; native browser undo/redo and cross-browser visuals are NOT_VERIFIED. Phase 2 inline rendering and Phase 3 caret/list parity remain recommendations and open questions.
+
 ## D-186 — Cross-Note Internal Markdown Links v0.1
 
 Status: **Approved / implemented and integrated at `ae052751df8ff504e32f5072381a605dfe127f3f` / exact-SHA CI [run `40284877373`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40284877373) PASS / signed Phone artifact `12633393446` / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
