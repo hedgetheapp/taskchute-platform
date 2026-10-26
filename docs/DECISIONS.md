@@ -1,3 +1,11 @@
+## D-185 — Android Markdown editor corrective v0.2
+
+Status: **Approved / implementation in progress / Product Verified NO / Released NO** (Product Owner, 2026-10-26).
+
+Canonical Decision: `docs/decisions/D-185_ANDROID_MARKDOWN_EDITOR_CORRECTIVE_V02.md`.
+
+Android-only correction to D-184: inactive standalone thematic breaks draw as one viewport-width divider while the active source row remains raw; a single supported IME Enter after a valid ordered-list item continues with the next number; and the underline command/button/preview are removed while persisted source bytes remain untouched and Markdown link underlining stays. Product Owner explicitly approved Option B for line moves: exchange the adjacent blank logical row as part of the move and permit terminal-newline presence to change, including `a\n\nb` with trailing `b` moved up => `a\nb\n`. This supersedes D-184's terminal-newline no-op rule. Diagnosis also found and corrected a duplicated final empty `sourceLines` row that made a caret at `a\nb\n` appear to target a phantom blank row. No API, Worker, schema, migration, Web, dependency, production, or release change.
+
 ## D-182 — Interruption-related hard delete with retained non-visible lineage v0.1
 
 Status: **Approved / implementation `ee9b6df3` / focused implementation and original exact-SHA CI PASS / local synthetic fail-closed runtime 26/26 PASS / nonprod Option C APPROVED 2026-10-23 / Step C Gates 0–3 PASS; APP 0040 and exact-source nonprod Worker deploy PASS; Gate 4 A/C/B API QA PASS; strict isolation NOT_VERIFIED (zero-candidate checkpoint supported; triggering request unknown) / Product Verified NO / Released NO** (Product Owner 2026-10-21; Option A and minimal invisible lineage).

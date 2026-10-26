@@ -260,11 +260,13 @@ bodyがfocusを持ちIMEが表示されている間だけ、IME直上にBold、H
 
 ### D-184 Android Markdown editor extensions
 
-D-184は共有Android editorのcommand toolbarを既存6操作のまま横スクロール可能に拡張し、horizontal rule、indent / outdent、ordered list、line up / down、underlineを追加する。既存の44dp slot、48dp touch area、Heading picker、raw Markdown source authority、selection / composition / focus、D-111 persistence semanticsを保つ。追加actionはstandalone Note、Task Primary Note、Project Primary Note、Daily Noteの共通editorに適用する。
+D-184は共有Android editorのcommand toolbarを既存6操作のまま横スクロール可能に拡張し、horizontal rule、indent / outdent、ordered list、line up / down、underlineを追加した。既存の44dp slot、48dp touch area、Heading picker、raw Markdown source authority、selection / composition / focus、D-111 persistence semanticsを保つ。追加actionはstandalone Note、Task Primary Note、Project Primary Note、Daily Noteの共通editorに適用する。D-185はunderline portionをsupersedeし、現在のtoolbarはunderlineを含まない12操作とする。
 
-Horizontal ruleは`---`だけの独立source行として挿入し、非active previewでも独立行と認識できる場合だけdividerとして表示する。Indent / outdentは対象logical lineごとに1段ずつ操作し、list / task markerと本文を保持する。Ordered listは選択された行をsource順に`1. `から連番化し、単一行では既存markerを内容を失わずtoggleできる。Enter時の自動採番や別listのglobal renumberは追加しない。
+Horizontal ruleは`---`だけの独立source行として挿入する。D-185では非active previewのstandalone thematic breakをsource/display offset mapping上の空のlogical rowとして保持し、editor viewport幅を使うsingle drawn lineを表示する。active lineはraw `---`のまま表示し、重複描画しない。Setext headingとして解釈される可能性がある直前paragraph、inline/malformed syntaxはdividerにしない。Indent / outdentは対象logical lineごとに1段ずつ操作し、list / task markerと本文を保持する。Ordered listは選択された行をsource順に`1. `から連番化し、単一行では既存markerを内容を失わずtoggleできる。D-185は有効なordered item末尾で単一のIME Enterが入力された場合に限り、同じindentと`.` / `)` markerを使う次番号を挿入する。selection replacement、composition中、multi-line paste、外部更新、非list行には適用せず、既存行・後続行・task checkbox stateを変更しない。empty numbered itemでのEnterはmarkerを除去してlistを終了する。
 
-Line up / downはcaret行または連続選択行を隣接logical lineの向こうへ1段ずつ移し、境界ではno-opとする。LF / CRLF separator、全行のsource、selection direction、末尾改行の有無を保持する。移動candidateが末尾改行の有無を変える場合はsourceとselectionを変更しない。Underlineはexact `<u>…</u>` pairだけをsource representationとして認識し、Android previewでも許可したexact pairだけをunderline decorationにする。malformed / unsupported HTML-like sourceはliteralのまま保持し、generic HTML parserやWeb previewを導入しない。Webのsource-only textareaではこのmarkupはliteral sourceとして表示される。
+Line up / downはcaret行または連続選択行を隣接logical lineの向こうへ1段ずつ移し、境界ではno-opとする。LF / CRLF separator sequence、全行のsource、selection directionを保持する。**D-184が要求したterminal-newline-preserving no-opはD-185でsupersedeされた。** Product Ownerは末尾空行も移動blockとの隣接交換に含め、結果として末尾改行が変化することを承認した。例として`a\n\nb`の末尾`b`を上へ動かすと`a\nb\n`となる。Source rowの内容と論理順は保持し、ユーザーが実行した既存のline-move commandの結果としてterminal-newlineだけが変わることを許容する。D-185の原因調査では、旧terminal-newline guardがこの先頭例をno-opにし、末尾改行付きsourceでは`sourceLines`の二重終端rowがphantom blank selectionを作る別不具合も確認・修正した。末尾論理rowはsourceの改行数に対して一度だけ表す。
+
+**Underline (D-184 historical feature, superseded by D-185):** Android toolbar button、insertion/toggle command、special `<u>…</u>` preview recognitionを削除する。既存Note source bytesは変更せず、legacy `<u>…</u>`はliteral表示となる。Markdown linkのunderline decorationは維持する。generic HTML parser、代替underline syntax、Web previewは追加しない。
 
 ## D-112 Android Today bulk selection and day operations
 

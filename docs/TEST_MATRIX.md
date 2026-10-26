@@ -1,3 +1,16 @@
+## D-185 Android Markdown editor corrective v0.2 — 2026-10-26
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D185-CORE | Shared Android Markdown editor | One-line thematic break, scoped ordered-list IME Enter, approved line-move behavior, literal legacy `<u>`, retained link styling and source/display mapping | `MarkdownLiveEditorTest` `49 / 49 PASS`; includes exact `a\n\nb` → `a\nb\n` up-move, `a\nb\n` → `a\n\nb` blank-row up/down, boundary/newline-caret, LF/CRLF, selected-block/reverse-selection, enter 1→2 / 9→10 / nested / CRLF / empty exit / task preservation / composition / paste rejection, HR classifier and mapping, literal `<u>` and link underline. It reproduces and fixes the phantom duplicate final empty row in `sourceLines`. | PASS / JVM |
+| D185-HR-API33 | Narrow Notes editor at fontScale 1.3 | Divider stays one continuous viewport-wide visual row; active source row is raw with no overlay | API 33 `markdownHorizontalRuleIsOneViewportWideRowAtNarrowFontScaleAndStaysRawWhenActive` `1 / 1 PASS` (pixel rows). | PASS / FOCUSED |
+| D185-IME-API33 | Shared Markdown body | Exercise actual Compose input-connection newline and verify persisted source / caret | API 33 `orderedListImeEnterInsertsNextMarkerAndLeavesCaretReadyForInput` `1 / 1 PASS`; source `1. テスト\n2. `, caret at end. This is Compose's synthetic input connection, not a physical OS keyboard. | PASS / FOCUSED |
+| D185-NOTES-GATE | Notes shared surface | Run Notes-only instrumentation and smoke gate | `scripts/android-qa.ps1 -Surface Notes` `39 / 39 PASS`; app install and activity resolution PASS, instrumentation exit code 0, crash log had no entries. Includes the toolbar-removal/reachability case and `taskNoteSheetShowsToolbarAfterBlankTapWithImeInsets`. | PASS / API 33 |
+| D185-DAILY | Daily shared editor | Check heading picker through IME inset change and save behavior | `DailyScreenInstrumentedTest#dailyHeadingPickerSurvivesImeInsetChangeAndOnlySavesAfterSelection` `1 / 1 PASS` on API 33; connected-test XML reports zero failures/errors. | PASS / FOCUSED API 33 |
+| D185-BOUNDARY | Data / other surfaces / device | Keep old Note source bytes and links; distinguish emulator from OS IME / physical device | JVM preview test verifies `<u>…</u>` remains literal source and only Markdown links receive underline decoration. No source-data migration or cleanup. Actual OS IME and Galaxy S23 remain NOT_VERIFIED / NOT_RUN. | PASS / BOUNDARY |
+
+The D-184 rows below preserve their historical evidence at source SHA `76aff01eead2ec30c20339c521d5c85080e44734`. D-185 supersedes D-184's terminal-newline no-op rule, automatic-Enter prohibition, and underline feature; the D-184 evidence itself is not retroactively rewritten.
+
 ## D-184 Android Markdown editor extensions — 2026-10-26
 
 | ID | Area | Requirement | Evidence | Status |

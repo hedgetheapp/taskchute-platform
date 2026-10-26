@@ -21,10 +21,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -40,6 +45,7 @@ import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.Density
@@ -478,8 +484,9 @@ class NotesScreenInstrumentedTest {
             toolbarScrollState.dispatchRawDelta(toolbarScrollState.maxValue.toFloat())
         }
         composeRule.waitForIdle()
-        listOf("区切り線", "インデント", "インデント解除", "番号付きリスト", "行を上へ", "行を下へ", "下線")
+        listOf("区切り線", "インデント", "インデント解除", "番号付きリスト", "行を上へ", "行を下へ")
             .forEach { composeRule.onNodeWithContentDescription(it).assertIsDisplayed() }
+        assertTrue("the withdrawn underline action is absent", composeRule.onAllNodesWithContentDescription("下線").fetchSemanticsNodes().isEmpty())
 
         composeRule.runOnIdle { latest.value = TextFieldValue("line", selection = TextRange(0)) }
         composeRule.onNodeWithContentDescription("区切り線").performClick()
@@ -503,9 +510,90 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("行を下へ").performClick()
         assertEquals("second\nfirst", latest.value.text)
 
-        composeRule.runOnIdle { latest.value = TextFieldValue("underline", selection = TextRange(0, 9)) }
-        composeRule.onNodeWithContentDescription("下線").performClick()
-        assertEquals("<u>underline</u>", latest.value.text)
+    }
+
+    @Test
+    fun markdownHorizontalRuleIsOneViewportWideRowAtNarrowFontScaleAndStaysRawWhenActive() {
+        val body = mutableStateOf("top\n\n---\nafter")
+        val latest = mutableStateOf(TextFieldValue(body.value))
+        composeRule.setContent {
+            val platformDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.3f)) {
+                MaterialTheme {
+                    Box(Modifier.width(280.dp).height(240.dp)) {
+                        MarkdownLiveEditor(
+                            value = body.value,
+                            onValueChange = { body.value = it },
+                            enabled = true,
+                            modifier = Modifier.fillMaxSize(),
+                            onTextFieldValueChange = { latest.value = it },
+                        )
+                    }
+                }
+            }
+        }
+
+        val editor = composeRule.onNodeWithContentDescription("Markdown body")
+        composeRule.waitForIdle()
+        assertEquals(1, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+
+        editor.performClick()
+        editor.performTextInputSelection(TextRange(6))
+        composeRule.waitForIdle()
+        assertEquals(TextRange(6), latest.value.selection)
+        assertEquals(0, fullWidthColorRuns(editor.captureToImage(), TaskChuteColors.SecondaryText))
+    }
+
+    @Test
+    fun orderedListImeEnterInsertsNextMarkerAndLeavesCaretReadyForInput() {
+        val initial = "1. テスト"
+        val body = mutableStateOf(initial)
+        val latest = mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length)))
+        composeRule.setContent {
+            val platformDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.3f)) {
+                val density = LocalDensity.current
+                val simulatedImeInsets = remember(density) {
+                    WindowInsets(bottom = with(density) { 280.dp.roundToPx() })
+                }
+                CompositionLocalProvider(LocalMarkdownEditorImeInsets provides simulatedImeInsets) {
+                    MaterialTheme {
+                        Box(Modifier.width(360.dp).fillMaxHeight()) {
+                            MarkdownLiveEditor(
+                                value = body.value,
+                                onValueChange = { body.value = it },
+                                enabled = true,
+                                modifier = Modifier.fillMaxSize(),
+                                onTextFieldValueChange = { latest.value = it },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val editor = composeRule.onNodeWithContentDescription("Markdown body")
+        editor.performClick()
+        editor.performTextInputSelection(TextRange(initial.length))
+        editor.performTextInput("\n")
+        composeRule.waitForIdle()
+
+        assertEquals("1. テスト\n2. ", body.value)
+        assertEquals(TextRange(body.value.length), latest.value.selection)
+    }
+
+    private fun fullWidthColorRuns(image: ImageBitmap, color: Color): Int {
+        val pixels = image.toPixelMap()
+        val target = color.toArgb()
+        var groups = 0
+        var inGroup = false
+        for (y in 0 until pixels.height) {
+            val matching = (0 until pixels.width).count { x -> pixels[x, y].toArgb() == target }
+            val isRuleRow = matching >= (pixels.width * 0.8f).toInt()
+            if (isRuleRow && !inGroup) groups += 1
+            inGroup = isRuleRow
+        }
+        return groups
     }
 
     @Test

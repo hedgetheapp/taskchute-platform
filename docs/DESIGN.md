@@ -93,13 +93,15 @@ D-183CのHeading slotは44dp幅・48dp高の`H`ボタンとし、押下でsource
 
 ### D-184 Android Markdown editor extensions
 
-既存6操作を先頭に保ったまま、toolbarへhorizontal rule、indent、outdent、ordered list、move up、move down、underlineを追加し、全13 slotを横方向にscrollできるようにする。44dp slot / 48dp touch area、IME直上の位置、focus中のIMEとeditor stateを維持し、第二toolbar rowは設けない。新規buttonは日本語のaccessibility descriptionを持つ。
+既存6操作を先頭に保ったまま、toolbarへhorizontal rule、indent、outdent、ordered list、move up、move downを追加する。D-184当時はunderlineを含む13 slotだったが、underline portionはD-185でsupersedeされ、現在は12操作とする。44dp slot / 48dp touch area、IME直上の位置、focus中のIMEとeditor stateを維持し、第二toolbar rowは設けない。新規buttonは日本語のaccessibility descriptionを持つ。
 
-Horizontal ruleはcaret行の境界へ`---`を挿入し、必要最小限の改行で独立行にする。inactive line previewはstandalone horizontal ruleだけをdivider表示する。Indent / outdentはcaret行またはselectionが触れる各logical lineを一回につき一段だけ変更し、通常行は2 ASCII spaces、list marker付き行はmarker幅を考慮してnestingし、markerと本文を保持する。Ordered listは選択blockを`1. `から連番にし、単一の既存ordered itemは内容を保持したtoggleを行う。automatic Enter numberingは行わない。
+Horizontal ruleはcaret行の境界へ`---`を挿入し、必要最小限の改行で独立行にする。inactive line previewはstandalone thematic breakだけをsource-faithfulな空のlogical rowにし、viewport幅いっぱいのsingle `drawBehind` lineを描く。active source rowはraw `---`のままでdividerを重ねない。Setext headingになり得る直前の非空paragraph行、inline `a---b`、malformed syntaxはdivider分類から除外する。Indent / outdentはcaret行またはselectionが触れる各logical lineを一回につき一段だけ変更し、通常行は2 ASCII spaces、list marker付き行はmarker幅を考慮してnestingし、markerと本文を保持する。Ordered listは選択blockを`1. `から連番にし、単一の既存ordered itemは内容を保持したtoggleを行う。
 
-Move up / downは対象の一行または連続blockを隣接行を越えて一段移動する。本文・改行形式・selection方向を移動先へ写し、境界ではsource writeを起こさない。末尾の空行移動などでsourceのterminal-newline状態が変わる候補もno-opにする。Indent / outdent / moveの連続tapは各tapで一段ずつ進み、D-183Bの同一action immediate revert対象にはしない。
+Move up / downは対象の一行または連続blockを隣接行を越えて一段移動する。本文・LF/CRLF separator sequence・selection方向を保ち、境界ではsource writeを起こさない。D-184のterminal-newline no-opはD-185で明示的にsupersedeされた。Product Ownerは`a\n\nb`の末尾`b`を上へ動かす場合も空行を交換し、terminal newlineが変わることを承認した。したがって結果は`a\nb\n`とし、論理行と順序を保持する。この操作による末尾改行状態の変化を許容する。診断では旧terminal-newline guardがこの例をno-opにし、`a\nb\n`では`sourceLines`の重複末尾rowが末尾空行のmoveを無効にする別問題も確認した。D-185はfinal empty logical rowを一度だけ作る。Indent / outdent / moveの連続tapは各tapで一段ずつ進み、D-183Bの同一action immediate revert対象にはしない。
 
-Underlineは選択範囲をexact `<u>…</u>` source markerで囲み、collapsed selectionではcaretをmarker間へ置く。previewはexactly recognized markersだけにunderline decorationを付ける。malformed、nestedで不安全、attribute付き、その他のHTML-like sourceはliteral表示し、Web側はsource-only textareaのままとする。generic HTML renderingや他clientのsecurity posture変更は行わない。
+Ordered listの有効なitem末尾でsoftware keyboardの単一Enterを入力するときだけ、同じindentと`.` / `)` markerで次番号を挿入する。collapsed selectionとTextFieldValue deltaでIME入力を識別し、composition、選択置換、複数行paste、外部state更新、通常proseには適用しない。既存行・下の行・task checkbox stateは変更しない。empty numbered itemでのEnterはmarkerだけを取り除いてlistを抜ける。
+
+**Underline (D-184 historical feature, superseded by D-185):** D-184 toolbar command and exact `<u>…</u>` Android preview recognition are removed. Existing Note source bytes are not migrated or rewritten; old `<u>` tokens display literally. Markdown link underline decoration remains. Web stays source-only, and no alternative underline syntax or generic HTML renderer is introduced.
 
 ## D-134 Android Running Progress Player
 
