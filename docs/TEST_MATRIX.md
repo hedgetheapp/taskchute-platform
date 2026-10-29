@@ -9,6 +9,16 @@
 | D187-BUILD | Web production build | Build changed Web source | Local `npm run typecheck` PASS; four affected Web files `83 / 83 PASS`; exact-SHA CI run `40325481506` PASS. Nonprod build completed; client bundle `740.36 kB` (`199.10 kB` gzip), with >500 kB advisory. Local Wrangler reported the known FCM secret name missing from process env; remote binding was present and no secret value was read. | PASS / LOCAL + CI |
 | D187-PRODUCT | Browser/device boundary | Distinguish automation from product verification | Native browser UI acceptance NOT_RUN / AUTH_FIXTURE_UNAVAILABLE; toolbar surfaces, native undo/redo, keyboard/IME, and save/CAS behavior remain NOT_VERIFIED. Product Verified NO. | NOT_RUN / NO |
 
+## D-187 Web Notes inline Markdown preview Phase 2 — 2026-10-29
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D187-PHASE2-SOURCE | Inline Markdown preview | Implement reviewed F-01–F-06 and inactive-preview/geometry work while keeping the textarea authoritative and rendering through the reviewed narrow allow-list | Integrated unchanged at `08a22d02d9aca4c354829389f8fa7afe6792b92e`; five reviewed source paths only. No package-lock/dependency, Worker/API, schema/migration, Android, or Wear change. | PASS / INTEGRATED |
+| D187-PHASE2-LOCAL | Web STANDARD | Confirm local source and regression coverage | Accepted evidence: Node `22.22.3`, npm `10.9.8`, Vitest `4.1.11`; **16 / 16 files, 533 / 533 tests PASS**, typecheck, normal Web build, and `git diff --check` PASS. Focused editor/NotesBoard **71 / 71 PASS**. Wrangler debug-log `EPERM` and Vite >500 kB chunk advisory were nonfatal. | PASS / LOCAL |
+| D187-PHASE2-CI | Exact implementation SHA | Run repository CI against the integrated source | [Actions run `40877129014`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40877129014), SHA `08a22d02d9aca4c354829389f8fa7afe6792b92e`: changed-surface classification, typecheck, Web tests, Worker/D1 tests, and production build PASS; Android verification skipped by classification. | PASS / EXACT-SHA |
+| D187-PHASE2-EDGE | Controlled Edge scenario | Check the reviewed delayed-parent-echo sequence with a synthetic fixture | User-reported PASS for B→C→old B→latest C only. This does not establish authenticated application/browser acceptance. | PASS / USER-REPORTED LIMITED SCOPE |
+| D187-PHASE2-BOUNDARY | Product, persistent QA, and security boundary | Separate source/automation evidence from product acceptance | No nonprod deployment, database mutation, persistent QA operation, or security remediation. Persistent authenticated nonprod browser QA NOT_RUN; Product Verified NO; Production NOT_RUN; Released NO. Historical Hit-a-Hint `532 / 533` failure remains an unattributed intermittent risk despite later isolated and final-suite passes. Existing npm audit findings (13 advisories: 1 critical, 9 high) remain unresolved. | NOT_RUN / NO |
+
 ## D187A Web Phase 1 nonprod rollout and browser closeout — 2026-10-26
 
 | ID | Area | Requirement | Evidence | Status |
