@@ -1,10 +1,10 @@
-## D-187 — Web Notes Android parity, Phase 1
+## D-187 — Web Notes Android parity, Phases 1–2
 
-Status: **User-requested Phase 1 implemented and integrated at `5c18362c622c29055892fc84301b35b50d17e37d` / exact-SHA CI [run `40325481506`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40325481506) PASS / Product Verified NO / Released NO.** This records the user's Phase 1 request only; it does not declare complete Web/Android parity or approve Phases 2–3.
+Status: **Phase 1 implemented and integrated at `5c18362c622c29055892fc84301b35b50d17e37d`; reviewed Phase 2 implemented and integrated at `08a22d02d9aca4c354829389f8fa7afe6792b92e` / exact-SHA CI [run `40877129014`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/40877129014) PASS / Product Verified NO / Production NOT_RUN / Released NO.** This records delivery through Phase 2; it does not declare complete Web/Android parity or approve Phase 3.
 
 Canonical Decision: `docs/decisions/D-187_WEB_NOTES_ANDROID_PARITY_V01.md`.
 
-Phase 1 adds a shared accessible raw-source Markdown toolbar and D-186 internal-link candidate insertion across Standalone, Task Primary, Project Primary, and Daily Notes. Unresolved link markers remain draft-only and block automatic/explicit save and safe flush. No server API, Worker, schema, migration, dependency, production, or release change. Browser-based Product Verified remains NO; native browser undo/redo and cross-browser visuals are NOT_VERIFIED. Phase 2 inline rendering and Phase 3 caret/list parity remain recommendations and open questions.
+Phase 1 adds a shared accessible raw-source Markdown toolbar and D-186 internal-link candidate insertion across Standalone, Task Primary, Project Primary, and Daily Notes. Unresolved link markers remain draft-only and block automatic/explicit save and safe flush. Reviewed Phase 2 adds a dependency-free inline Markdown preview while retaining the textarea as source authority; it changed no package-lock/dependency, Worker/API, schema/migration, Android, or Wear source. Persistent authenticated nonprod browser acceptance remains NOT_RUN and Product Verified remains NO. Phase 3 caret/list parity remains a recommendation and open questions.
 
 ## D-186 — Cross-Note Internal Markdown Links v0.1
 
