@@ -512,8 +512,31 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .notes-title-field { display: grid; gap: 6px; color: #575754; font-size: 12px; font-weight: 600; }
 .notes-title-field input, .note-markdown-editor textarea { width: 100%; box-sizing: border-box; font: inherit; font-weight: 400; }
 .note-markdown-field { display: grid; min-width: 0; gap: 6px; color: #575754; font-size: 12px; font-weight: 600; }
-.note-markdown-editor { display: grid; grid-template-columns: 42px minmax(0, 1fr); min-height: 320px; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
-.note-markdown-editor textarea { min-width: 0; min-height: 320px; resize: vertical; border: 0; border-radius: 0; background: #fff; color: #191919; line-height: 1.55; }
+.note-markdown-editor { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr); min-height: 320px; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
+.note-markdown-editor textarea { position: relative; z-index: 1; grid-column: 2; grid-row: 1; display: block; min-width: 0; min-height: 320px; resize: vertical; border: 0; border-radius: 0; padding: 8px; background: transparent; color: transparent; caret-color: #191919; line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; scrollbar-gutter: stable; }
+.note-markdown-editor textarea::selection { color: transparent; background: rgb(115 169 216 / 48%); }
+.note-markdown-preview-scroll { position: absolute; z-index: 0; inset: 0; overflow: auto; scrollbar-width: none; scrollbar-gutter: stable; pointer-events: none; user-select: none; background: #fff; color: #191919; }
+.note-markdown-preview-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.note-markdown-preview-grid { display: grid; min-width: 0; grid-template-columns: 42px minmax(0, 1fr); padding: 8px 0; font: inherit; font-weight: 400; line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
+.notes-line-number { min-width: 0; border-right: 1px solid #e9e9e7; padding: 0 7px 0 4px; background: #fff; color: #9b9b97; font-size: 12px; font-weight: 400; line-height: inherit; text-align: right; white-space: nowrap; user-select: none; }
+.notes-line-number.is-hidden { color: transparent; visibility: hidden; }
+.note-markdown-preview-line { position: relative; min-width: 0; padding: 0 8px; line-height: inherit; }
+.note-markdown-preview-layout { display: block; min-height: 1.55em; color: transparent; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
+.note-markdown-preview-rendered { position: absolute; inset: 0 8px; display: block; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; line-height: inherit; }
+.note-markdown-preview-line.is-heading .note-markdown-preview-rendered, .note-markdown-preview-line.is-setext-heading .note-markdown-preview-rendered { color: #292929; font-weight: 700; }
+.note-markdown-preview-line.is-quote .note-markdown-preview-rendered { border-left: 2px solid #c7c7c2; padding-left: 8px; color: #686864; }
+.note-markdown-preview-line.is-horizontal-rule .note-markdown-preview-rendered::after { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px solid #b8b8b2; content: ""; }
+.note-markdown-preview-segment.is-bold { color: #191919; font-weight: 700; }
+.note-markdown-preview-segment.is-link { color: #1769aa; text-decoration: underline; text-underline-offset: 2px; }
+.note-markdown-preview-segment.is-list-marker { color: #787874; }
+.note-markdown-preview-segment.is-task-marker { color: #4b7c54; }
+.note-markdown-preview-line.is-source-fallback .note-markdown-preview-rendered:not(.note-markdown-preview-measurement) { border: 0; padding: 0; color: inherit; font-weight: 400; }
+.note-markdown-preview-measurement { visibility: hidden; pointer-events: none; }
+.note-markdown-editor.is-composing .note-markdown-preview-scroll { z-index: 2; background: transparent; }
+.note-markdown-editor.is-composing .note-markdown-preview-line:not(.is-active) > .note-markdown-preview-rendered:not(.note-markdown-preview-measurement) { background: #fff; }
+.note-markdown-editor.is-composing .note-markdown-preview-line.is-active > .note-markdown-preview-rendered { visibility: hidden; }
+.note-markdown-editor.is-composing textarea { background: #fff; color: #191919; }
+.note-markdown-editor.is-composing textarea::selection { color: #191919; }
 .note-markdown-toolbar { display: flex; min-width: 0; max-width: 100%; gap: 4px; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: thin; }
 .note-markdown-toolbar button { flex: 0 0 auto; min-width: 32px; min-height: 30px; padding: 4px 7px; border: 1px solid #e2e2df; border-radius: 5px; background: #fff; color: #454542; font-size: 12px; line-height: 1.2; }
 .note-markdown-toolbar button:hover:not(:disabled), .note-markdown-toolbar button:focus-visible { border-color: #9dc7eb; background: #f1f7fc; color: #1769aa; }
@@ -530,7 +553,6 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .note-markdown-link-meta { overflow: hidden; color: #787774; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .note-markdown-link-error { color: #a33030; }
 .note-markdown-link-more { margin: 2px 8px 7px; }
-.notes-line-numbers { width: 42px; min-width: 42px; overflow: hidden; border-right: 1px solid #e9e9e7; background: #fff; color: #9b9b97; padding: 8px 7px 8px 4px; font: inherit; font-size: 12px; font-weight: 400; line-height: 1.55; text-align: right; user-select: none; }
 .task-note-cell { display: grid; place-items: center; }
 .task-note-trigger { display: grid; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #a4a4a0; font-size: 18px; line-height: 1; }
 .task-note-trigger:hover, .task-note-trigger:focus-visible { background: #eef6ff; color: #2383e2; }
@@ -590,9 +612,6 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .task-note-peek-minimized-bar .task-note-peek-actions button { display: inline-grid; min-width: 28px; min-height: 28px; place-items: center; padding: 5px; }
 .task-note-peek-minimized-bar .task-note-icon { flex: 0 0 auto; }
 .task-note-peek.is-minimized { min-height: 0; padding: 0 10px; }
-.notes-line-numbers.is-hidden { color: transparent; }
-.notes-line-numbers.is-hidden span { visibility: hidden; }
-.notes-line-numbers span { display: block; }
 .notes-line-number-toggle { display: inline-flex; grid-auto-flow: column; align-items: center; gap: 6px; color: #787774; font-size: 11px; font-weight: 400; }
 .notes-line-number-toggle input { width: 14px; height: 14px; margin: 0; }
 .notes-save-status { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; color: #575754; font-size: 12px; }

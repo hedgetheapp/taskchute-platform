@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { InternalDocumentLinkCandidate } from "../shared/contracts";
 import { api, ApiClientError } from "./api";
+import {
+  parseNoteMarkdownPreviewSource,
+  projectNoteMarkdownPreviewSelection,
+  type NoteMarkdownPreviewLine,
+  type NoteMarkdownPreviewSegment,
+} from "./note-markdown-preview";
 import {
   activeInternalLinkQuery,
   applyMarkdownCommand,
@@ -14,6 +20,57 @@ import {
 export const NOTE_LINE_NUMBERING_STORAGE_KEY = "taskchute.notes.line-numbering.v1";
 const NOTE_LINE_NUMBERING_ENVELOPE_VERSION = 1;
 const INTERNAL_LINK_SEARCH_DEBOUNCE_MS = 250;
+const PREVIEW_GEOMETRY_TOLERANCE_PX = 0.75;
+
+function previewLineMeasurementKey(start: number, end: number): string {
+  return start + ":" + end;
+}
+
+function previewLineMeasurementKeyForLine(line: NoteMarkdownPreviewLine): string {
+  return previewLineMeasurementKey(line.sourceStart, line.sourceEnd);
+}
+
+function hasUnsafePreviewRowGeometry(row: HTMLElement): boolean {
+  const layout = row.querySelector<HTMLElement>(".note-markdown-preview-layout");
+  const candidate = row.querySelector<HTMLElement>(".note-markdown-preview-measurement") ??
+    row.querySelector<HTMLElement>(".note-markdown-preview-rendered:not(.note-markdown-preview-measurement)");
+  if (!layout || !candidate) return true;
+
+  const rawRect = layout.getBoundingClientRect();
+  const renderedRect = candidate.getBoundingClientRect();
+  const dimensions = [
+    rawRect.top, rawRect.bottom, rawRect.left, rawRect.right, rawRect.width, rawRect.height,
+    renderedRect.top, renderedRect.bottom, renderedRect.left, renderedRect.right, renderedRect.width,
+  ];
+  if (!dimensions.every(Number.isFinite) || rawRect.width <= 0 || rawRect.height <= 0 || renderedRect.width <= 0) {
+    return true;
+  }
+
+  const segments = Array.from(candidate.querySelectorAll<HTMLElement>(".note-markdown-preview-segment"));
+  if (segments.length === 0) return false;
+  const fragments = segments.flatMap((segment) => Array.from(segment.getClientRects()))
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  if (fragments.length === 0) return true;
+
+  return fragments.some((rect) =>
+    rect.top < rawRect.top - PREVIEW_GEOMETRY_TOLERANCE_PX ||
+    rect.bottom > rawRect.bottom + PREVIEW_GEOMETRY_TOLERANCE_PX ||
+    rect.left < renderedRect.left - PREVIEW_GEOMETRY_TOLERANCE_PX ||
+    rect.right > renderedRect.right + PREVIEW_GEOMETRY_TOLERANCE_PX
+  );
+}
+
+function rawPreviewSegments(sourceText: string): NoteMarkdownPreviewSegment[] {
+  return sourceText ? [{ kind: "text", text: sourceText }] : [];
+}
+
+function renderPreviewSegments(segments: NoteMarkdownPreviewSegment[]) {
+  return segments.map((part, index) => (
+    <span key={index} className={"note-markdown-preview-segment is-" + part.kind}>
+      {part.text}
+    </span>
+  ));
+}
 
 type NoteLineNumberingListener = () => void;
 type LinkSearchState = {
@@ -138,22 +195,122 @@ export function NoteMarkdownEditor({
   const [dismissedTokenKey, setDismissedTokenKey] = useState<string | null>(null);
   const [searchState, setSearchState] = useState<LinkSearchState | null>(null);
   const [composing, setComposing] = useState(false);
+  const [compositionDraft, setCompositionDraft] = useState<string | null>(null);
+  const [previewSource, setPreviewSource] = useState(value);
+  const [previewSelection, setPreviewSelection] = useState<MarkdownSelection>({ start: 0, end: 0, direction: "none" });
+  const [measuredFallbackKeys, setMeasuredFallbackKeys] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
   const sourceRef = useRef(value);
   const pendingStartRef = useRef<number | null>(null);
   const activeTokenRef = useRef<InternalLinkQueryToken | null>(null);
   const selectionSnapshotRef = useRef<MarkdownSelection>({ start: 0, end: 0, direction: "none" });
   const composingRef = useRef(false);
+  const compositionEndTimerRef = useRef<number | null>(null);
+  const measurePreviewRef = useRef<(() => void) | null>(null);
   const sessionKeyRef = useRef(documentSessionKey);
   const propValueRef = useRef(value);
-  const awaitingParentValueRef = useRef<string | null>(null);
+  // Keep unacknowledged onChange snapshots so a delayed older echo is not treated as an external replacement.
+  const awaitingParentValuesRef = useRef<string[]>([]);
   const programmaticTextRef = useRef<string | null>(null);
   const searchGenerationRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
-  const lineCount = Math.max(1, value.split("\n").length);
+  const parsedPreview = useMemo(() => parseNoteMarkdownPreviewSource(previewSource), [previewSource]);
+  const previewLines = useMemo(
+    () => projectNoteMarkdownPreviewSelection(parsedPreview, previewSelection),
+    [parsedPreview, previewSelection],
+  );
+  const activeRowsKey = useMemo(
+    () => previewLines.filter((line) => line.active).map(previewLineMeasurementKeyForLine).join(","),
+    [previewLines],
+  );
+  const displayLines = useMemo(() => previewLines.map((line) => {
+    const measuredFallback = !line.active && measuredFallbackKeys.has(previewLineMeasurementKeyForLine(line));
+    if (!line.sourceFallback && !measuredFallback) return line;
+    return {
+      ...line,
+      sourceFallback: true,
+      segments: rawPreviewSegments(line.sourceText),
+      displayText: line.sourceText,
+    };
+  }), [measuredFallbackKeys, previewLines]);
   const classes = ["note-markdown-field", className].filter(Boolean).join(" ");
   const activeTokenKey = tokenKey(activeToken);
   const toolbarDisabled = disabled || composing;
+
+  useLayoutEffect(() => {
+    const scroll = previewScrollRef.current;
+    const editor = scroll?.parentElement;
+    if (!editor || !scroll) return;
+
+    let disposed = false;
+    let animationFrame: number | null = null;
+    const measure = () => {
+      if (disposed) return;
+      const next = new Set<string>();
+      const grid = previewScrollRef.current?.querySelector<HTMLElement>(".note-markdown-preview-grid");
+      if (!grid) return;
+      const rows = Array.from(grid.querySelectorAll<HTMLElement>(".note-markdown-preview-line"));
+      for (const row of rows) {
+        if (row.classList.contains("is-active")) continue;
+        const start = Number(row.dataset.sourceStart);
+        const end = Number(row.dataset.sourceEnd);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        if (hasUnsafePreviewRowGeometry(row)) next.add(previewLineMeasurementKey(start, end));
+      }
+      setMeasuredFallbackKeys((current) => {
+        if (current.size === next.size && Array.from(current).every((key) => next.has(key))) return current;
+        return next;
+      });
+    };
+    const scheduleMeasure = () => {
+      if (disposed || animationFrame !== null) return;
+      if (typeof window.requestAnimationFrame !== "function") {
+        measure();
+        return;
+      }
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        measure();
+      });
+    };
+
+    measurePreviewRef.current = measure;
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleMeasure);
+    resizeObserver?.observe(editor);
+    window.addEventListener("resize", scheduleMeasure);
+    window.visualViewport?.addEventListener("resize", scheduleMeasure);
+    const fonts = document.fonts;
+    fonts?.addEventListener("loadingdone", scheduleMeasure);
+    void fonts?.ready.then(scheduleMeasure).catch(() => {});
+
+    return () => {
+      disposed = true;
+      if (measurePreviewRef.current === measure) measurePreviewRef.current = null;
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      window.visualViewport?.removeEventListener("resize", scheduleMeasure);
+      fonts?.removeEventListener("loadingdone", scheduleMeasure);
+      if (animationFrame !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    measurePreviewRef.current?.();
+  }, [activeRowsKey, measuredFallbackKeys, parsedPreview]);
+
+  useEffect(() => () => {
+    if (compositionEndTimerRef.current !== null) window.clearTimeout(compositionEndTimerRef.current);
+  }, []);
+
+  function syncPreviewSelectionFromTextarea(): void {
+    const textarea = textareaRef.current;
+    const selection = textarea ? selectionOf(textarea) : { start: 0, end: 0, direction: "none" as const };
+    selectionSnapshotRef.current = selection;
+    setPreviewSelection(selection);
+  }
 
   const setCurrentToken = useCallback((token: InternalLinkQueryToken | null) => {
     const nextKey = tokenKey(token);
@@ -166,10 +323,17 @@ export function NoteMarkdownEditor({
   useEffect(() => {
     const changedSession = sessionKeyRef.current !== documentSessionKey;
     if (changedSession) {
+      if (compositionEndTimerRef.current !== null) window.clearTimeout(compositionEndTimerRef.current);
+      compositionEndTimerRef.current = null;
+      composingRef.current = false;
+      setCompositionDraft(null);
+      setComposing(false);
       sessionKeyRef.current = documentSessionKey;
       propValueRef.current = value;
-      awaitingParentValueRef.current = null;
+      awaitingParentValuesRef.current = [];
       sourceRef.current = value;
+      setPreviewSource(value);
+      syncPreviewSelectionFromTextarea();
       pendingStartRef.current = null;
       setPendingLink(false);
       setCurrentToken(null);
@@ -178,16 +342,27 @@ export function NoteMarkdownEditor({
       onUnresolvedInternalLinkChange?.(false);
       return;
     }
-    if (awaitingParentValueRef.current === value) {
+    const awaitingParentValues = awaitingParentValuesRef.current;
+    const echoedSourceIndex = awaitingParentValues.lastIndexOf(value);
+    if (echoedSourceIndex >= 0) {
+      const isLatestEcho = echoedSourceIndex === awaitingParentValues.length - 1;
+      awaitingParentValues.splice(0, echoedSourceIndex + 1);
       propValueRef.current = value;
-      awaitingParentValueRef.current = null;
+      if (isLatestEcho && !composingRef.current) setCompositionDraft(null);
       return;
     }
     if (propValueRef.current === value) return;
+    if (compositionEndTimerRef.current !== null) window.clearTimeout(compositionEndTimerRef.current);
+    compositionEndTimerRef.current = null;
+    composingRef.current = false;
+    setCompositionDraft(null);
+    setComposing(false);
     propValueRef.current = value;
-    awaitingParentValueRef.current = null;
+    awaitingParentValuesRef.current = [];
     sessionKeyRef.current = documentSessionKey;
     sourceRef.current = value;
+    setPreviewSource(value);
+    syncPreviewSelectionFromTextarea();
     pendingStartRef.current = null;
     setPendingLink(false);
     setCurrentToken(null);
@@ -203,9 +378,12 @@ export function NoteMarkdownEditor({
     const nextPendingStart = active?.start ?? rebased;
     const unresolved = nextPendingStart !== null;
     sourceRef.current = next;
-    awaitingParentValueRef.current = next;
+    const awaitingParentValues = awaitingParentValuesRef.current;
+    if (awaitingParentValues[awaitingParentValues.length - 1] !== next) awaitingParentValues.push(next);
     pendingStartRef.current = nextPendingStart;
     selectionSnapshotRef.current = selection;
+    setPreviewSource(next);
+    setPreviewSelection(selection);
     setPendingLink(unresolved);
     onUnresolvedInternalLinkChange?.(unresolved);
     setCurrentToken(active);
@@ -216,11 +394,20 @@ export function NoteMarkdownEditor({
   function syncSelection(textarea: HTMLTextAreaElement): void {
     const selection = selectionOf(textarea);
     selectionSnapshotRef.current = selection;
+    setPreviewSelection(selection);
     if (!composingRef.current) setCurrentToken(activeInternalLinkQuery(sourceRef.current, selection.start, selection.end));
   }
 
   function handleTextareaChange(textarea: HTMLTextAreaElement): void {
     if (programmaticTextRef.current === textarea.value) return;
+    if (composingRef.current) {
+      const selection = selectionOf(textarea);
+      selectionSnapshotRef.current = selection;
+      setCompositionDraft(textarea.value);
+      setPreviewSource(textarea.value);
+      setPreviewSelection(selection);
+      return;
+    }
     publishSourceChange(textarea.value, selectionOf(textarea));
   }
 
@@ -365,25 +552,81 @@ export function NoteMarkdownEditor({
         {toolbarButton("行を上へ移動", "↑", { kind: "move-line", direction: "up" })}
         {toolbarButton("行を下へ移動", "↓", { kind: "move-line", direction: "down" })}
       </div>
-      <div className="note-markdown-editor">
-        <div className={`notes-line-numbers${lineNumbersEnabled ? " is-visible" : " is-hidden"}`} aria-hidden="true">
-          {Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}
+      <div className={`note-markdown-editor${composing ? " is-composing" : ""}`}>
+        <div ref={previewScrollRef} className="note-markdown-preview-scroll" aria-hidden="true">
+          <div className="note-markdown-preview-grid">
+            {displayLines.map((line) => (
+              <Fragment key={line.index}>
+                <div className={`notes-line-number${lineNumbersEnabled ? "" : " is-hidden"}`}>{line.index + 1}</div>
+                <div
+                  className={`note-markdown-preview-line is-${line.kind}${line.active ? " is-active" : ""}${line.sourceFallback ? " is-source-fallback" : ""}`}
+                  data-source-start={line.sourceStart}
+                  data-source-end={line.sourceEnd}
+                  data-line-index={line.index}
+                >
+                  {/* Raw source reserves wrapping height; native font and scroll parity still requires the browser gate. */}
+                  <span className="note-markdown-preview-layout">{line.sourceText || "\u200b"}</span>
+                  {line.sourceFallback && measuredFallbackKeys.has(previewLineMeasurementKeyForLine(line)) &&
+                    line.kind !== "horizontal-rule" && line.kind !== "setext-underline" && (
+                      <span className="note-markdown-preview-rendered note-markdown-preview-measurement" aria-hidden="true">
+                        {renderPreviewSegments(previewLines[line.index]?.segments ?? [])}
+                      </span>
+                    )}
+                  <span className="note-markdown-preview-rendered">
+                    {line.kind !== "horizontal-rule" && line.kind !== "setext-underline" && line.segments.map((part, index) => (
+                      <span key={index} className={`note-markdown-preview-segment is-${part.kind}`}>
+                        {part.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </Fragment>
+            ))}
+          </div>
         </div>
         <textarea
           ref={textareaRef}
           aria-label="Markdown本文"
-          value={value}
+          value={compositionDraft ?? value}
           disabled={disabled}
           onChange={(event) => handleTextareaChange(event.currentTarget)}
           onSelect={(event) => syncSelection(event.currentTarget)}
           onClick={(event) => syncSelection(event.currentTarget)}
           onKeyUp={(event) => syncSelection(event.currentTarget)}
-          onBlur={(event) => { selectionSnapshotRef.current = selectionOf(event.currentTarget); }}
-          onCompositionStart={() => { composingRef.current = true; setComposing(true); setCurrentToken(null); }}
+          onBlur={(event) => {
+            const selection = selectionOf(event.currentTarget);
+            selectionSnapshotRef.current = selection;
+            setPreviewSelection(selection);
+          }}
+          onCompositionStart={(event) => {
+            if (compositionEndTimerRef.current !== null) window.clearTimeout(compositionEndTimerRef.current);
+            compositionEndTimerRef.current = null;
+            composingRef.current = true;
+            setCompositionDraft(event.currentTarget.value);
+            setComposing(true);
+            setCurrentToken(null);
+          }}
           onCompositionEnd={(event) => {
-            composingRef.current = false;
-            setComposing(false);
-            syncSelection(event.currentTarget);
+            const textarea = event.currentTarget;
+            if (compositionEndTimerRef.current !== null) window.clearTimeout(compositionEndTimerRef.current);
+            compositionEndTimerRef.current = window.setTimeout(() => {
+              compositionEndTimerRef.current = null;
+              const finalTextarea = textareaRef.current ?? textarea;
+              const finalSource = finalTextarea.value;
+              const selection = selectionOf(finalTextarea);
+              composingRef.current = false;
+              setComposing(false);
+              if (finalSource === sourceRef.current) {
+                const localSource = sourceRef.current === propValueRef.current ? null : sourceRef.current;
+                setCompositionDraft(localSource);
+                setPreviewSource(sourceRef.current);
+                setPreviewSelection(selection);
+                syncSelection(finalTextarea);
+                return;
+              }
+              setCompositionDraft(finalSource);
+              publishSourceChange(finalSource, selection);
+            }, 0);
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape" && visibleSearch && activeTokenKey) {
@@ -395,8 +638,7 @@ export function NoteMarkdownEditor({
           }}
           rows={rows}
           onScroll={(event) => {
-            const gutter = event.currentTarget.previousElementSibling;
-            if (gutter instanceof HTMLElement) gutter.scrollTop = event.currentTarget.scrollTop;
+            if (previewScrollRef.current) previewScrollRef.current.scrollTop = event.currentTarget.scrollTop;
           }}
         />
       </div>
